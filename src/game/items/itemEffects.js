@@ -1,6 +1,6 @@
 import { isAdjacent } from '../combat/monsters';
 export const applyItemEffect = ({ item, playerHp, playerMaxHp, playerPosition, monsters, }) => {
-    if (item.kind === 'medkit' || item.kind === 'stim-pack') {
+    if ((item.healAmount ?? 0) > 0) {
         if (playerHp >= playerMaxHp) {
             return {
                 consumed: false,
@@ -17,7 +17,7 @@ export const applyItemEffect = ({ item, playerHp, playerMaxHp, playerPosition, m
             removedMonsterIds: [],
         };
     }
-    if (item.kind === 'ember-bomb') {
+    if ((item.damageAmount ?? 0) > 0) {
         const adjacentTargets = monsters.filter((monster) => isAdjacent(monster.position, playerPosition));
         if (adjacentTargets.length === 0) {
             return {

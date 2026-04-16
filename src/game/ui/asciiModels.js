@@ -37,9 +37,19 @@ const ITEM_ASCII_ART = {
         ' [++]>  ',
         '  ||    ',
     ].join('\n'),
+    'bandage-roll': [
+        ' .----. ',
+        ' |////| ',
+        " '----' ",
+    ].join('\n'),
     'ember-bomb': [
         '  .*.   ',
         ' (###)~ ',
+        '  \\|/   ',
+    ].join('\n'),
+    'shock-orb': [
+        '  .o.   ',
+        ' {~~~}  ',
         '  \\|/   ',
     ].join('\n'),
     'rusted-blade': [
@@ -72,6 +82,31 @@ const ITEM_ASCII_ART = {
         ' |====| ',
         " '[__]' ",
     ].join('\n'),
+    'serrated-pike': [
+        '   /#   ',
+        '=={##>  ',
+        '   \\\\/   ',
+    ].join('\n'),
+    'relic-cleaver': [
+        '  /##   ',
+        '=={###  ',
+        '  \\\\/   ',
+    ].join('\n'),
+    'reinforced-mail': [
+        ' .-##-. ',
+        ' |####| ',
+        " '[__]' ",
+    ].join('\n'),
+    'bulwark-shell': [
+        ' .-XX-. ',
+        ' |####| ',
+        " '[##]' ",
+    ].join('\n'),
+    'courier-pack': [
+        ' .-[]-. ',
+        ' | [] | ',
+        " '----' ",
+    ].join('\n'),
     'scavenger-pack': [
         ' .-[]-. ',
         ' | ## | ',
@@ -86,6 +121,11 @@ const ITEM_ASCII_ART = {
         ' .-[]-. ',
         ' |####| ',
         ' |####| ',
+    ].join('\n'),
+    'vault-frame': [
+        ' .-[]-. ',
+        ' |####| ',
+        ' {####} ',
     ].join('\n'),
 };
 export const getMonsterAsciiArt = (kind) => MONSTER_ASCII_ART[kind];

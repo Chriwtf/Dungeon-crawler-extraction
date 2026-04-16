@@ -23,6 +23,13 @@ const INVENTORY_PANEL_HEIGHT = 238;
 const DETAILS_PANEL_Y = INVENTORY_PANEL_Y + INVENTORY_PANEL_HEIGHT + PANEL_GAP;
 const DETAILS_PANEL_HEIGHT = 180;
 const PANEL_HEADER_HEIGHT = 30;
+const DETAILS_BODY_X = SIDEBAR_X + 18;
+const DETAILS_BODY_Y = DETAILS_PANEL_Y + PANEL_HEADER_HEIGHT + 12;
+const DETAILS_BODY_WIDTH = PANEL_WIDTH - 36;
+const DETAILS_LEFT_WIDTH = 168;
+const DETAILS_COLUMN_GAP = 12;
+const DETAILS_PREVIEW_X = DETAILS_BODY_X + DETAILS_LEFT_WIDTH + DETAILS_COLUMN_GAP + 72;
+const DETAILS_FOOTER_Y = DETAILS_BODY_Y + 88;
 export class RunScene extends Phaser.Scene {
     constructor() {
         super('run');
@@ -182,6 +189,12 @@ export class RunScene extends Phaser.Scene {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "statusDetailText", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         Object.defineProperty(this, "asciiPreviewText", {
             enumerable: true,
             configurable: true,
@@ -304,12 +317,17 @@ export class RunScene extends Phaser.Scene {
             wordWrap: { width: PANEL_WIDTH - 36 },
             lineSpacing: 1,
         });
-        this.statusText = this.add.text(SIDEBAR_X + 18, DETAILS_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
+        this.statusText = this.add.text(DETAILS_BODY_X, DETAILS_BODY_Y, '', {
             ...createTextStyle('13px', matrixPalette.textDim),
-            wordWrap: { width: PANEL_WIDTH - 36 },
-            lineSpacing: 1,
+            wordWrap: { width: DETAILS_LEFT_WIDTH },
+            lineSpacing: 2,
         });
-        this.asciiPreviewText = this.add.text(SIDEBAR_X + 182, DETAILS_PANEL_Y + PANEL_HEADER_HEIGHT + 22, '', {
+        this.statusDetailText = this.add.text(DETAILS_BODY_X, DETAILS_FOOTER_Y, '', {
+            ...createTextStyle('12px', matrixPalette.textDim),
+            wordWrap: { width: DETAILS_BODY_WIDTH },
+            lineSpacing: 2,
+        });
+        this.asciiPreviewText = this.add.text(DETAILS_PREVIEW_X, DETAILS_BODY_Y + 8, '', {
             ...createTextStyle('15px', matrixPalette.accent, 'center'),
             lineSpacing: 6,
         }).setOrigin(0.5, 0);
@@ -464,6 +482,8 @@ export class RunScene extends Phaser.Scene {
                 case 'Digit5':
                 case 'Digit6':
                 case 'Digit7':
+                case 'Digit8':
+                case 'Digit9':
                     this.selectInventorySlot(Number(event.code.replace('Digit', '')) - 1);
                     break;
                 case 'KeyR':
@@ -617,7 +637,7 @@ export class RunScene extends Phaser.Scene {
         }
         this.playerHp = result.nextPlayerHp;
         const bonusLogLines = [];
-        if (item.kind === 'ember-bomb') {
+        if ((item.damageAmount ?? 0) > 0) {
             const adjacentTargets = this.monsters.filter((monster) => isAdjacent(monster.position, this.player));
             for (const monster of adjacentTargets) {
                 monster.hp -= item.damageAmount ?? 0;
@@ -780,6 +800,7 @@ export class RunScene extends Phaser.Scene {
         ].join('   |   '));
         this.inventoryText.setText(this.buildInventoryText());
         this.statusText.setText(this.buildStatusText());
+        this.statusDetailText.setText(this.buildStatusDetailText());
         this.asciiPreviewText.setText(this.buildAsciiPreviewText());
         this.updateLog();
     }
@@ -814,47 +835,68 @@ export class RunScene extends Phaser.Scene {
                 ? 'C continua in un livello piu difficile'
                 : 'B torna alla base e chiude la spedizione';
             return [
-                'ESTRAZIONE RIUSCITA',
+                'ESTRAZIONE',
                 extractionOptions,
-                'B torna alla base e deposita la run',
-                '',
-                'Se torni alla base, tutti gli oggetti portati vengono messi nella stash.',
+                'B deposita la run',
             ].join('\n');
         }
         if (this.isRunComplete && this.completionState === 'victory') {
             return [
-                'BOSS FINALE ABBATTUTO',
-                'L archivio collassa e la spedizione termina qui.',
-                'B torna alla base e deposita tutto nella stash',
+                'VITTORIA',
+                'B boss finale abbattuto',
+                'B torna alla base',
             ].join('\n');
         }
         if (this.isRunComplete && this.completionState === 'dead') {
             return [
-                'SEI MORTO',
-                'Gli oggetti equipaggiati in questa run sono persi.',
+                'RUN FALLITA',
                 'B torna alla base',
                 'SPACE torna al menu',
+            ].join('\n');
+        }
+        return [
+            'COMANDI',
+            'G raccogli',
+            'F usa consumabile',
+            'Q lascia oggetto',
+            `TAB / 1-${this.getInventorySize()} cambia slot`,
+            this.isFinalFloor ? 'E boss finale attivo' : 'E estrai se uscita attiva',
+            'R torna alla base',
+        ].join('\n');
+    }
+    buildStatusDetailText() {
+        if (this.isRunComplete && this.completionState === 'extracted') {
+            return [
+                'RUN SALVATA',
+                'Gli oggetti portati vengono messi nella stash quando rientri alla base.',
+            ].join('\n');
+        }
+        if (this.isRunComplete && this.completionState === 'victory') {
+            return [
+                'ARCHIVIO COLLASSATO',
+                'La spedizione termina qui e tutto il bottino viene depositato nella stash.',
+            ].join('\n');
+        }
+        if (this.isRunComplete && this.completionState === 'dead') {
+            return [
+                'STATO',
+                'Gli oggetti equipaggiati in questa run sono persi.',
             ].join('\n');
         }
         const selectedItem = this.inventory[this.selectedSlot];
         const groundItem = this.getGroundItemAt(this.player.x, this.player.y);
         const nearbyMonster = this.monsters.find((monster) => isAdjacent(monster.position, this.player));
+        const contactLabel = nearbyMonster
+            ? `${nearbyMonster.glyph}  ${nearbyMonster.name}`
+            : groundItem
+                ? `${groundItem.item.glyph}  ${groundItem.item.name}`
+                : 'nessun contatto';
         return [
-            'G raccogli da terra',
-            'F usa consumabile',
-            'Q lascia oggetto',
-            `TAB / 1-${this.getInventorySize()} cambia slot`,
-            this.isFinalFloor ? 'Boss finale: sconfiggilo per chiudere la spedizione' : 'E estrai quando l\'uscita e attiva',
-            'R torna alla base subito',
-            '',
             'PROGRESSIONE',
             `LVL ${this.currentLevel}   EXP ${this.currentXp}/${this.xpToNextLevel}`,
-            'DETTAGLIO SLOT',
-            selectedItem ? getItemAsciiLabel(selectedItem) : '...  (vuoto)',
+            `SLOT ${selectedItem ? getItemAsciiLabel(selectedItem) : '...  (vuoto)'}`,
             selectedItem ? selectedItem.description : 'Seleziona uno slot pieno per usarlo.',
-            '',
-            'SEGNALI LOCALI',
-            nearbyMonster ? `${nearbyMonster.glyph}  ${nearbyMonster.name}` : groundItem ? `${groundItem.item.glyph}  ${groundItem.item.name}` : 'nessun contatto',
+            `SEGNALI ${contactLabel}`,
         ].join('\n');
     }
     buildAsciiPreviewText() {

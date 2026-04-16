@@ -15,6 +15,28 @@ const buildItemId = () => {
 };
 export const createItem = (kind, id = buildItemId()) => {
     switch (kind) {
+        case 'bandage-roll':
+            return {
+                id,
+                kind,
+                category: 'consumable',
+                name: 'rotolo di bende',
+                glyph: '!',
+                color: 0xa8efff,
+                description: 'Recuperi 3 HP.',
+                healAmount: 3,
+            };
+        case 'shock-orb':
+            return {
+                id,
+                kind,
+                category: 'consumable',
+                name: 'sfera elettrostatica',
+                glyph: '*',
+                color: 0x8cc7ff,
+                description: 'Scarica sui mostri adiacenti e infligge 4 danni.',
+                damageAmount: 4,
+            };
         case 'field-medkit':
             return {
                 id,
@@ -59,6 +81,61 @@ export const createItem = (kind, id = buildItemId()) => {
                 description: 'Bonus passivo: +2 armatura finche resta nello zaino.',
                 armorBonus: 2,
             };
+        case 'serrated-pike':
+            return {
+                id,
+                kind,
+                category: 'weapon',
+                name: 'picca seghettata',
+                glyph: ')',
+                color: 0xffd48b,
+                description: 'Bonus passivo: +3 danni finche resta nello zaino.',
+                attackBonus: 3,
+            };
+        case 'relic-cleaver':
+            return {
+                id,
+                kind,
+                category: 'weapon',
+                name: 'mannaia reliquia',
+                glyph: ')',
+                color: 0xfff0b3,
+                description: 'Bonus passivo: +4 danni finche resta nello zaino.',
+                attackBonus: 4,
+            };
+        case 'reinforced-mail':
+            return {
+                id,
+                kind,
+                category: 'armor',
+                name: 'cotta rinforzata',
+                glyph: '[',
+                color: 0xc4d2e6,
+                description: 'Bonus passivo: +3 armatura finche resta nello zaino.',
+                armorBonus: 3,
+            };
+        case 'bulwark-shell':
+            return {
+                id,
+                kind,
+                category: 'armor',
+                name: 'guscio bastione',
+                glyph: '[',
+                color: 0xe0edf8,
+                description: 'Bonus passivo: +4 armatura finche resta nello zaino.',
+                armorBonus: 4,
+            };
+        case 'courier-pack':
+            return {
+                id,
+                kind,
+                category: 'backpack',
+                name: 'zaino da corriere',
+                glyph: '}',
+                color: 0x9d7c4c,
+                description: 'Bonus passivo da run: +1 slot inventario finche resta nello zaino.',
+                inventoryBonus: 1,
+            };
         case 'scavenger-pack':
             return {
                 id,
@@ -67,8 +144,8 @@ export const createItem = (kind, id = buildItemId()) => {
                 name: 'zaino da razziatore',
                 glyph: '}',
                 color: 0xb08d57,
-                description: 'Bonus passivo da run: +1 slot inventario finche resta nello zaino.',
-                inventoryBonus: 1,
+                description: 'Bonus passivo da run: +2 slot inventario finche resta nello zaino.',
+                inventoryBonus: 2,
             };
         case 'expedition-pack':
             return {
@@ -78,8 +155,8 @@ export const createItem = (kind, id = buildItemId()) => {
                 name: 'zaino da spedizione',
                 glyph: '}',
                 color: 0xc7a86a,
-                description: 'Bonus passivo da run: +2 slot inventario finche resta nello zaino.',
-                inventoryBonus: 2,
+                description: 'Bonus passivo da run: +3 slot inventario finche resta nello zaino.',
+                inventoryBonus: 3,
             };
         case 'hauler-rig':
             return {
@@ -89,8 +166,19 @@ export const createItem = (kind, id = buildItemId()) => {
                 name: 'rig da trasporto',
                 glyph: '}',
                 color: 0xe4c27b,
-                description: 'Bonus passivo da run: +3 slot inventario finche resta nello zaino.',
-                inventoryBonus: 3,
+                description: 'Bonus passivo da run: +4 slot inventario finche resta nello zaino.',
+                inventoryBonus: 4,
+            };
+        case 'vault-frame':
+            return {
+                id,
+                kind,
+                category: 'backpack',
+                name: 'telaio da vault',
+                glyph: '}',
+                color: 0xf2dc94,
+                description: 'Bonus passivo da run: +5 slot inventario finche resta nello zaino.',
+                inventoryBonus: 5,
             };
         case 'ember-bomb':
             return {
@@ -165,17 +253,25 @@ export const getInventorySizeBonus = (inventory) => {
 };
 const DEPTH_WEIGHTED_ITEMS = [
     { kind: 'medkit', weight: 24 },
+    { kind: 'bandage-roll', weight: 22 },
     { kind: 'stim-pack', weight: 18 },
     { kind: 'ember-bomb', weight: 14 },
+    { kind: 'shock-orb', weight: 12, minDepth: 3 },
     { kind: 'rusted-blade', weight: 13 },
     { kind: 'scrap-armor', weight: 13 },
+    { kind: 'courier-pack', weight: 10, minDepth: 2 },
     { kind: 'field-medkit', weight: 12, minDepth: 3 },
     { kind: 'inferno-charge', weight: 10, minDepth: 4 },
     { kind: 'steel-blade', weight: 10, minDepth: 4 },
     { kind: 'plate-armor', weight: 10, minDepth: 5 },
-    { kind: 'scavenger-pack', weight: 9, minDepth: 2 },
-    { kind: 'expedition-pack', weight: 7, minDepth: 5 },
-    { kind: 'hauler-rig', weight: 4, minDepth: 8 },
+    { kind: 'serrated-pike', weight: 9, minDepth: 6 },
+    { kind: 'reinforced-mail', weight: 9, minDepth: 6 },
+    { kind: 'scavenger-pack', weight: 9, minDepth: 4 },
+    { kind: 'expedition-pack', weight: 7, minDepth: 6 },
+    { kind: 'relic-cleaver', weight: 6, minDepth: 8 },
+    { kind: 'bulwark-shell', weight: 6, minDepth: 8 },
+    { kind: 'hauler-rig', weight: 5, minDepth: 8 },
+    { kind: 'vault-frame', weight: 3, minDepth: 10 },
 ];
 const getDepthLootPool = (depth) => DEPTH_WEIGHTED_ITEMS.filter((entry) => depth >= (entry.minDepth ?? 1));
 const rollWeightedItemKind = (pool) => {
