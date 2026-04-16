@@ -16,6 +16,9 @@ export class MenuScene extends Phaser.Scene {
             .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 30, [
             'Roguelike horror a turni per browser',
             '',
+            'Loop nuovo: estrai -> continua piu a fondo oppure torna alla base',
+            'Alla base puoi gestire la stash e preparare il loadout della run successiva',
+            '',
             'WASD / Frecce: muovi',
             'Entra in un mostro: attacca',
             'E: interagisci / estrai',
@@ -23,7 +26,7 @@ export class MenuScene extends Phaser.Scene {
             'F: usa slot attivo',
             'Q: lascia oggetto',
             'TAB / 1-4: seleziona slot',
-            'R: rigenera dungeon',
+            'R: torna alla base',
             '',
             'Recupera il reperto (!), saccheggia e raggiungi l\'uscita (>)',
         ].join('\n'), {
@@ -34,14 +37,14 @@ export class MenuScene extends Phaser.Scene {
         })
             .setOrigin(0.5);
         const start = this.add
-            .text(GAME_WIDTH / 2, GAME_HEIGHT - 140, 'Premi SPACE per iniziare', {
+            .text(GAME_WIDTH / 2, GAME_HEIGHT - 140, 'Premi SPACE per entrare alla base', {
             fontFamily: 'monospace',
             fontSize: '24px',
             color: '#9be7a7',
         })
             .setOrigin(0.5)
             .setInteractive({ useHandCursor: true });
-        start.on('pointerdown', () => this.scene.start('run'));
-        this.input.keyboard?.once('keydown-SPACE', () => this.scene.start('run'));
+        start.on('pointerdown', () => this.scene.start('base'));
+        this.input.keyboard?.once('keydown-SPACE', () => this.scene.start('base'));
     }
 }

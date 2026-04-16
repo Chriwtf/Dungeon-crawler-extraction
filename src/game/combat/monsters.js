@@ -1,17 +1,19 @@
 const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-const createMonster = (kind, position, index) => {
+const createMonster = (kind, position, index, depth) => {
+    const bonusHp = Math.max(0, depth - 1);
+    const bonusDamage = Math.floor((depth - 1) / 2);
     if (kind === 'sentry') {
         return {
             id: `sentry-${index}`,
             kind,
             name: 'sentinella affamata',
             position,
-            hp: 8,
-            maxHp: 8,
-            damageMin: 2,
-            damageMax: 4,
+            hp: 8 + bonusHp * 2,
+            maxHp: 8 + bonusHp * 2,
+            damageMin: 2 + bonusDamage,
+            damageMax: 4 + bonusDamage,
             color: 0xc75c5c,
-            alertRange: 7,
+            alertRange: 7 + Math.min(depth - 1, 2),
         };
     }
     return {
@@ -19,12 +21,12 @@ const createMonster = (kind, position, index) => {
         kind,
         name: 'ratto ferale',
         position,
-        hp: 4,
-        maxHp: 4,
-        damageMin: 1,
-        damageMax: 2,
+        hp: 4 + bonusHp,
+        maxHp: 4 + bonusHp,
+        damageMin: 1 + bonusDamage,
+        damageMax: 2 + bonusDamage,
         color: 0xa3aab7,
-        alertRange: 5,
+        alertRange: 5 + Math.min(depth - 1, 2),
     };
 };
 const shuffle = (items) => {
@@ -54,13 +56,14 @@ export const getMonsterSpawnPoints = (tiles, reserved) => {
     }
     return floorTiles;
 };
-export const spawnMonsters = (tiles, reserved) => {
+export const spawnMonsters = (tiles, reserved, depth = 1) => {
     const spawnPoints = shuffle(getMonsterSpawnPoints(tiles, reserved));
-    const desiredCount = Math.min(6, Math.max(3, Math.floor(spawnPoints.length / 18)));
+    const desiredCount = Math.min(10, Math.max(3, Math.floor(spawnPoints.length / 18) + depth - 1));
     const monsters = [];
     for (let index = 0; index < desiredCount && index < spawnPoints.length; index += 1) {
-        const kind = Math.random() > 0.65 ? 'sentry' : 'rat';
-        monsters.push(createMonster(kind, spawnPoints[index], index));
+        const kindThreshold = Math.max(0.35, 0.65 - (depth - 1) * 0.08);
+        const kind = Math.random() > kindThreshold ? 'sentry' : 'rat';
+        monsters.push(createMonster(kind, spawnPoints[index], index, depth));
     }
     return monsters;
 };

@@ -8,12 +8,15 @@ const shuffle = (items) => {
     return copy;
 };
 let nextItemId = 0;
-const createItem = (kind) => {
+const buildItemId = () => {
     nextItemId += 1;
+    return `item-${nextItemId}`;
+};
+export const createItem = (kind, id = buildItemId()) => {
     switch (kind) {
         case 'ember-bomb':
             return {
-                id: `item-${nextItemId}`,
+                id,
                 kind,
                 category: 'consumable',
                 name: 'bomba a brace',
@@ -24,7 +27,7 @@ const createItem = (kind) => {
             };
         case 'stim-pack':
             return {
-                id: `item-${nextItemId}`,
+                id,
                 kind,
                 category: 'consumable',
                 name: 'stim-pack',
@@ -35,7 +38,7 @@ const createItem = (kind) => {
             };
         case 'rusted-blade':
             return {
-                id: `item-${nextItemId}`,
+                id,
                 kind,
                 category: 'weapon',
                 name: 'lama arrugginita',
@@ -46,7 +49,7 @@ const createItem = (kind) => {
             };
         case 'scrap-armor':
             return {
-                id: `item-${nextItemId}`,
+                id,
                 kind,
                 category: 'armor',
                 name: 'corazza di ferraglia',
@@ -58,7 +61,7 @@ const createItem = (kind) => {
         case 'medkit':
         default:
             return {
-                id: `item-${nextItemId}`,
+                id,
                 kind: 'medkit',
                 category: 'consumable',
                 name: 'kit medico',
@@ -69,6 +72,9 @@ const createItem = (kind) => {
             };
     }
 };
+export const cloneItem = (item) => ({ ...item });
+export const serializeItem = (item) => ({ ...item });
+export const hydrateItem = (storedItem) => createItem(storedItem.kind, storedItem.id);
 const getAvailableFloorTiles = (tiles, reserved) => {
     const reservedKeys = new Set(reserved.map((point) => `${point.x},${point.y}`));
     const positions = [];
@@ -86,7 +92,7 @@ const getAvailableFloorTiles = (tiles, reserved) => {
     }
     return positions;
 };
-export const spawnGroundItems = (tiles, reserved) => {
+export const spawnGroundItems = (tiles, reserved, depth = 1) => {
     const positions = shuffle(getAvailableFloorTiles(tiles, reserved));
     const itemKinds = [
         'medkit',
@@ -95,7 +101,7 @@ export const spawnGroundItems = (tiles, reserved) => {
         'rusted-blade',
         'scrap-armor',
     ];
-    const count = Math.min(itemKinds.length, Math.max(2, Math.floor(positions.length / 28)));
+    const count = Math.min(itemKinds.length + Math.min(depth - 1, 2), Math.max(2, Math.floor(positions.length / 28) + Math.floor((depth - 1) / 2)));
     const result = [];
     for (let i = 0; i < count; i += 1) {
         result.push({

@@ -27,6 +27,10 @@ export type GroundItem = {
   position: Point;
 };
 
+export type StoredItem = Omit<Item, 'color'> & {
+  color: number;
+};
+
 const randomBetween = (min: number, max: number): number =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -43,13 +47,17 @@ const shuffle = <T>(items: T[]): T[] => {
 
 let nextItemId = 0;
 
-const createItem = (kind: ItemKind): Item => {
+const buildItemId = (): string => {
   nextItemId += 1;
+  return `item-${nextItemId}`;
+};
+
+export const createItem = (kind: ItemKind, id = buildItemId()): Item => {
 
   switch (kind) {
     case 'ember-bomb':
       return {
-        id: `item-${nextItemId}`,
+        id,
         kind,
         category: 'consumable',
         name: 'bomba a brace',
@@ -60,7 +68,7 @@ const createItem = (kind: ItemKind): Item => {
       };
     case 'stim-pack':
       return {
-        id: `item-${nextItemId}`,
+        id,
         kind,
         category: 'consumable',
         name: 'stim-pack',
@@ -71,7 +79,7 @@ const createItem = (kind: ItemKind): Item => {
       };
     case 'rusted-blade':
       return {
-        id: `item-${nextItemId}`,
+        id,
         kind,
         category: 'weapon',
         name: 'lama arrugginita',
@@ -82,7 +90,7 @@ const createItem = (kind: ItemKind): Item => {
       };
     case 'scrap-armor':
       return {
-        id: `item-${nextItemId}`,
+        id,
         kind,
         category: 'armor',
         name: 'corazza di ferraglia',
@@ -94,7 +102,7 @@ const createItem = (kind: ItemKind): Item => {
     case 'medkit':
     default:
       return {
-        id: `item-${nextItemId}`,
+        id,
         kind: 'medkit',
         category: 'consumable',
         name: 'kit medico',
@@ -105,6 +113,12 @@ const createItem = (kind: ItemKind): Item => {
       };
   }
 };
+
+export const cloneItem = (item: Item): Item => ({ ...item });
+
+export const serializeItem = (item: Item): StoredItem => ({ ...item });
+
+export const hydrateItem = (storedItem: StoredItem): Item => createItem(storedItem.kind, storedItem.id);
 
 const getAvailableFloorTiles = (tiles: TileGrid, reserved: Point[]): Point[] => {
   const reservedKeys = new Set(reserved.map((point) => `${point.x},${point.y}`));
@@ -128,7 +142,7 @@ const getAvailableFloorTiles = (tiles: TileGrid, reserved: Point[]): Point[] => 
   return positions;
 };
 
-export const spawnGroundItems = (tiles: TileGrid, reserved: Point[]): GroundItem[] => {
+export const spawnGroundItems = (tiles: TileGrid, reserved: Point[], depth = 1): GroundItem[] => {
   const positions = shuffle(getAvailableFloorTiles(tiles, reserved));
   const itemKinds: ItemKind[] = [
     'medkit',
@@ -137,7 +151,10 @@ export const spawnGroundItems = (tiles: TileGrid, reserved: Point[]): GroundItem
     'rusted-blade',
     'scrap-armor',
   ];
-  const count = Math.min(itemKinds.length, Math.max(2, Math.floor(positions.length / 28)));
+  const count = Math.min(
+    itemKinds.length + Math.min(depth - 1, 2),
+    Math.max(2, Math.floor(positions.length / 28) + Math.floor((depth - 1) / 2)),
+  );
   const result: GroundItem[] = [];
 
   for (let i = 0; i < count; i += 1) {

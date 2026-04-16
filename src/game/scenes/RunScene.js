@@ -2,20 +2,22 @@ import Phaser from 'phaser';
 import { getRandomNeighborSteps, getStepTowardTarget, isAdjacent, rollDamage, spawnMonsters, } from '../combat/monsters';
 import { TurnEngine } from '../core/TurnEngine';
 import { applyItemEffect } from '../items/itemEffects';
+import { cloneItem, rollMonsterDrop, spawnGroundItems, } from '../items/inventory';
 import { BASE_PLAYER_STATS, derivePlayerStats } from '../items/playerStats';
-import { rollMonsterDrop, spawnGroundItems } from '../items/inventory';
-import { generateDungeon, MAP_HEIGHT, MAP_WIDTH, TILE_SIZE, } from '../world/DungeonGenerator';
-const OFFSET_X = 40;
-const OFFSET_Y = 60;
+import { depositInventoryToStash } from '../state/metaProgression';
+import { createDungeonConfigForDepth, generateDungeon, } from '../world/DungeonGenerator';
 const INVENTORY_SIZE = 4;
-const MAP_PIXEL_WIDTH = MAP_WIDTH * TILE_SIZE;
-const SIDEBAR_X = OFFSET_X + MAP_PIXEL_WIDTH + 36;
-const PANEL_WIDTH = 320;
+const MAP_AREA_X = 40;
+const MAP_AREA_Y = 56;
+const MAP_AREA_WIDTH = 760;
+const MAP_AREA_HEIGHT = 620;
+const SIDEBAR_X = 840;
+const PANEL_WIDTH = 360;
 const PANEL_GAP = 16;
 const LOG_PANEL_Y = 56;
-const LOG_PANEL_HEIGHT = 156;
+const LOG_PANEL_HEIGHT = 170;
 const INVENTORY_PANEL_Y = LOG_PANEL_Y + LOG_PANEL_HEIGHT + PANEL_GAP;
-const INVENTORY_PANEL_HEIGHT = 228;
+const INVENTORY_PANEL_HEIGHT = 238;
 const DETAILS_PANEL_Y = INVENTORY_PANEL_Y + INVENTORY_PANEL_HEIGHT + PANEL_GAP;
 const DETAILS_PANEL_HEIGHT = 180;
 const PANEL_HEADER_HEIGHT = 30;
@@ -160,6 +162,53 @@ export class RunScene extends Phaser.Scene {
             writable: true,
             value: false
         });
+        Object.defineProperty(this, "completionState", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 'none'
+        });
+        Object.defineProperty(this, "currentDepth", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 1
+        });
+        Object.defineProperty(this, "mapWidth", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 0
+        });
+        Object.defineProperty(this, "mapHeight", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 0
+        });
+        Object.defineProperty(this, "tileSize", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 24
+        });
+        Object.defineProperty(this, "mapOriginX", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: MAP_AREA_X
+        });
+        Object.defineProperty(this, "mapOriginY", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: MAP_AREA_Y
+        });
+    }
+    init(data) {
+        this.currentDepth = Math.max(1, data.depth ?? 1);
+        this.inventory = this.normalizeInventory(data.startingInventory);
+        this.playerHp = data.carriedHp ?? BASE_PLAYER_STATS.maxHp;
     }
     create() {
         this.cameras.main.setBackgroundColor('#050608');
@@ -167,7 +216,7 @@ export class RunScene extends Phaser.Scene {
         this.uiGraphics = this.add.graphics();
         this.hudText = this.add.text(40, 16, '', {
             fontFamily: 'monospace',
-            fontSize: '18px',
+            fontSize: '17px',
             color: '#d8e0ea',
         });
         this.logTitleText = this.add.text(SIDEBAR_X + 16, 61, 'LOG EVENTI', {
@@ -206,12 +255,27 @@ export class RunScene extends Phaser.Scene {
             wordWrap: { width: PANEL_WIDTH - 36 },
             lineSpacing: 1,
         });
-        this.playerRect = this.add.rectangle(0, 0, TILE_SIZE - 8, TILE_SIZE - 8, 0x8be9fd);
-        this.setupRun();
+        this.playerRect = this.add.rectangle(0, 0, this.tileSize - 8, this.tileSize - 8, 0x8be9fd);
+        this.setupRun({
+            depth: this.currentDepth,
+            carryInventory: this.inventory,
+            carryHp: this.playerHp,
+        });
         this.bindInput();
     }
-    setupRun() {
-        const dungeon = generateDungeon();
+    normalizeInventory(source) {
+        const inventory = Array(INVENTORY_SIZE).fill(null);
+        if (!source) {
+            return inventory;
+        }
+        for (let index = 0; index < Math.min(source.length, INVENTORY_SIZE); index += 1) {
+            inventory[index] = source[index] ? cloneItem(source[index]) : null;
+        }
+        return inventory;
+    }
+    setupRun({ depth, carryInventory, carryHp, }) {
+        const dungeonConfig = createDungeonConfigForDepth(depth);
+        const dungeon = generateDungeon(dungeonConfig);
         const safeSpawnArea = [
             dungeon.playerStart,
             dungeon.objective,
@@ -221,37 +285,47 @@ export class RunScene extends Phaser.Scene {
             { x: dungeon.playerStart.x, y: dungeon.playerStart.y + 1 },
             { x: dungeon.playerStart.x, y: dungeon.playerStart.y - 1 },
         ];
+        this.currentDepth = depth;
         this.tiles = dungeon.tiles;
         this.player = { ...dungeon.playerStart };
-        this.monsters = spawnMonsters(this.tiles, safeSpawnArea);
-        this.groundItems = spawnGroundItems(this.tiles, safeSpawnArea);
-        this.inventory = Array(INVENTORY_SIZE).fill(null);
+        this.monsters = spawnMonsters(this.tiles, safeSpawnArea, depth);
+        this.groundItems = spawnGroundItems(this.tiles, safeSpawnArea, depth);
+        this.inventory = this.normalizeInventory(carryInventory);
         this.selectedSlot = 0;
         this.objectiveCollected = false;
         this.extractionUnlocked = false;
         this.playerStats = derivePlayerStats(this.inventory);
-        this.playerHp = this.playerStats.maxHp;
+        this.playerHp = Math.min(carryHp ?? this.playerStats.maxHp, this.playerStats.maxHp);
         this.isRunComplete = false;
+        this.completionState = 'none';
         this.turnEngine = new TurnEngine();
         this.logLines = [
-            'Sei entrato nell\'archivio.',
-            'Raccogli oggetti, gestisci 4 slot e sopravvivi.',
-            'DCSS style: pickup a terra, inventario rapido, pressione tattica.',
+            `Sei nel livello ${this.currentDepth} dell'archivio.`,
+            depth === 1
+                ? 'Recupera il reperto, saccheggia e valuta se approfondire o rientrare.'
+                : 'Il dungeon si espande. Nemici e corridoi diventano piu letali.',
+            'Se torni alla base, tutto cio che porti con te finira nella stash.',
         ];
+        this.updateMapMetrics();
         this.drawMap();
         this.updatePlayerVisual();
-        this.addLogLines(['Run avviata']);
+        this.addLogLines([`Run avviata al livello ${this.currentDepth}.`]);
         this.refreshHud();
+    }
+    updateMapMetrics() {
+        this.mapHeight = this.tiles.length;
+        this.mapWidth = this.tiles[0]?.length ?? 0;
+        this.tileSize = Math.max(16, Math.floor(Math.min(MAP_AREA_WIDTH / this.mapWidth, MAP_AREA_HEIGHT / this.mapHeight)));
+        const mapPixelWidth = this.mapWidth * this.tileSize;
+        const mapPixelHeight = this.mapHeight * this.tileSize;
+        this.mapOriginX = MAP_AREA_X + Math.floor((MAP_AREA_WIDTH - mapPixelWidth) / 2);
+        this.mapOriginY = MAP_AREA_Y + Math.floor((MAP_AREA_HEIGHT - mapPixelHeight) / 2);
+        this.playerRect.setSize(this.tileSize - 8, this.tileSize - 8);
     }
     bindInput() {
         this.input.keyboard?.on('keydown', (event) => {
             if (this.isRunComplete) {
-                if (event.code === 'KeyR') {
-                    this.setupRun();
-                }
-                if (event.code === 'Space') {
-                    this.scene.start('menu');
-                }
+                this.handleRunCompleteInput(event.code);
                 return;
             }
             switch (event.code) {
@@ -294,12 +368,36 @@ export class RunScene extends Phaser.Scene {
                     this.selectInventorySlot(Number(event.code.replace('Digit', '')) - 1);
                     break;
                 case 'KeyR':
-                    this.setupRun();
+                    this.scene.start('base');
                     break;
                 default:
                     break;
             }
         });
+    }
+    handleRunCompleteInput(code) {
+        if (this.completionState === 'extracted') {
+            if (code === 'KeyC') {
+                this.setupRun({
+                    depth: this.currentDepth + 1,
+                    carryInventory: this.inventory,
+                    carryHp: this.playerHp,
+                });
+                return;
+            }
+            if (code === 'KeyB') {
+                depositInventoryToStash(this.inventory);
+                this.scene.start('base');
+                return;
+            }
+        }
+        if (code === 'KeyB') {
+            this.scene.start('base');
+            return;
+        }
+        if (code === 'Space') {
+            this.scene.start('menu');
+        }
     }
     tryMove(dx, dy) {
         const next = { x: this.player.x + dx, y: this.player.y + dy };
@@ -324,7 +422,7 @@ export class RunScene extends Phaser.Scene {
         }
         else if (tile === 'extraction') {
             logLine = this.extractionUnlocked
-                ? 'Sei sulla zona di estrazione. Premi E per uscire.'
+                ? 'Sei sulla zona di estrazione. Premi E per decidere se continuare o tornare alla base.'
                 : 'L\'estrazione e sigillata. Ti manca il reperto.';
         }
         else if (this.getGroundItemAt(this.player.x, this.player.y)) {
@@ -336,10 +434,12 @@ export class RunScene extends Phaser.Scene {
         const tile = this.tiles[this.player.y][this.player.x];
         if (tile === 'extraction' && this.extractionUnlocked) {
             this.isRunComplete = true;
-            this.turnEngine.next('Estrazione completata. Sei sopravvissuto.');
+            this.completionState = 'extracted';
+            this.turnEngine.next('Estrazione raggiunta. Scegli se continuare o tornare alla base.');
             this.addLogLines([
-                'Estrazione completata. Sei sopravvissuto.',
-                'Premi R per una nuova run o SPACE per tornare al menu.',
+                'Hai raggiunto l\'estrazione con successo.',
+                'Premi C per una mappa piu grande e difficile.',
+                'Premi B per tornare alla base e depositare tutto nella stash.',
             ]);
             this.drawMap();
             this.refreshHud();
@@ -437,7 +537,7 @@ export class RunScene extends Phaser.Scene {
         this.refreshHud();
     }
     isWalkable(x, y) {
-        if (x < 0 || y < 0 || x >= MAP_WIDTH || y >= MAP_HEIGHT) {
+        if (x < 0 || y < 0 || x >= this.mapWidth || y >= this.mapHeight) {
             return false;
         }
         return this.tiles[y][x] !== 'wall';
@@ -457,23 +557,21 @@ export class RunScene extends Phaser.Scene {
         this.uiGraphics.fillRoundedRect(SIDEBAR_X, LOG_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
         this.uiGraphics.fillRoundedRect(SIDEBAR_X, INVENTORY_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
         this.uiGraphics.fillRoundedRect(SIDEBAR_X, DETAILS_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
-        for (let y = 0; y < MAP_HEIGHT; y += 1) {
-            for (let x = 0; x < MAP_WIDTH; x += 1) {
+        for (let y = 0; y < this.mapHeight; y += 1) {
+            for (let x = 0; x < this.mapWidth; x += 1) {
                 const tile = this.tiles[y][x];
                 const color = this.getTileColor(tile);
                 this.mapGraphics.fillStyle(color, 1);
-                this.mapGraphics.fillRect(OFFSET_X + x * TILE_SIZE, OFFSET_Y + y * TILE_SIZE, TILE_SIZE - 1, TILE_SIZE - 1);
+                this.mapGraphics.fillRect(this.mapOriginX + x * this.tileSize, this.mapOriginY + y * this.tileSize, this.tileSize - 1, this.tileSize - 1);
             }
         }
         for (const groundItem of this.groundItems) {
             this.mapGraphics.fillStyle(groundItem.item.color, 1);
-            this.mapGraphics.fillCircle(OFFSET_X + groundItem.position.x * TILE_SIZE + TILE_SIZE / 2, OFFSET_Y + groundItem.position.y * TILE_SIZE + TILE_SIZE / 2, 5);
+            this.mapGraphics.fillCircle(this.mapOriginX + groundItem.position.x * this.tileSize + this.tileSize / 2, this.mapOriginY + groundItem.position.y * this.tileSize + this.tileSize / 2, Math.max(4, Math.floor(this.tileSize * 0.22)));
         }
         for (const monster of this.monsters) {
             this.mapGraphics.fillStyle(monster.color, 1);
-            this.mapGraphics.fillRect(OFFSET_X + monster.position.x * TILE_SIZE + 4, OFFSET_Y + monster.position.y * TILE_SIZE + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-            this.mapGraphics.fillStyle(0x101419, 1);
-            this.mapGraphics.fillRect(OFFSET_X + monster.position.x * TILE_SIZE + 8, OFFSET_Y + monster.position.y * TILE_SIZE + 8, TILE_SIZE - 16, 4);
+            this.mapGraphics.fillRect(this.mapOriginX + monster.position.x * this.tileSize + 4, this.mapOriginY + monster.position.y * this.tileSize + 4, this.tileSize - 8, this.tileSize - 8);
         }
     }
     getTileColor(tile) {
@@ -491,16 +589,16 @@ export class RunScene extends Phaser.Scene {
         }
     }
     updatePlayerVisual() {
-        this.playerRect.setPosition(OFFSET_X + this.player.x * TILE_SIZE + TILE_SIZE / 2, OFFSET_Y + this.player.y * TILE_SIZE + TILE_SIZE / 2);
+        this.playerRect.setPosition(this.mapOriginX + this.player.x * this.tileSize + this.tileSize / 2, this.mapOriginY + this.player.y * this.tileSize + this.tileSize / 2);
     }
     refreshHud() {
         this.hudText.setText([
-            `Turno: ${this.turnEngine.currentTurn}`,
+            `Livello: ${this.currentDepth}`,
+            `Mappa: ${this.mapWidth}x${this.mapHeight}`,
             `HP: ${this.playerHp}/${this.playerStats.maxHp}`,
             `ATT: ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
             `ARM: ${this.playerStats.armor}`,
             `Reperto: ${this.objectiveCollected ? 'RECUPERATO' : 'MANCANTE'}`,
-            `Estrazione: ${this.extractionUnlocked ? 'ATTIVA' : 'BLOCCATA'}`,
             `Mostri: ${this.monsters.length}`,
         ].join('   |   '));
         this.inventoryText.setText(this.buildInventoryText());
@@ -516,7 +614,7 @@ export class RunScene extends Phaser.Scene {
             `Attacco ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
             `Armatura ${this.playerStats.armor}`,
             '',
-            'INVENTARIO',
+            'INVENTARIO ATTIVO',
         ];
         for (let index = 0; index < INVENTORY_SIZE; index += 1) {
             const item = this.inventory[index];
@@ -531,12 +629,31 @@ export class RunScene extends Phaser.Scene {
         return lines.join('\n');
     }
     buildStatusText() {
+        if (this.isRunComplete && this.completionState === 'extracted') {
+            return [
+                'ESTRAZIONE RIUSCITA',
+                'C continua in un livello piu difficile',
+                'B torna alla base e deposita la run',
+                '',
+                'Se torni alla base, tutti gli oggetti portati vengono messi nella stash.',
+            ].join('\n');
+        }
+        if (this.isRunComplete && this.completionState === 'dead') {
+            return [
+                'SEI MORTO',
+                'Gli oggetti equipaggiati in questa run sono persi.',
+                'B torna alla base',
+                'SPACE torna al menu',
+            ].join('\n');
+        }
         const selectedItem = this.inventory[this.selectedSlot];
         return [
             'G raccogli da terra',
             'F usa consumabile',
             'Q lascia oggetto',
             'TAB / 1-4 cambia slot',
+            'E estrai quando l\'uscita e attiva',
+            'R torna alla base subito',
             '',
             'DETTAGLIO SLOT',
             selectedItem ? `${selectedItem.name}` : '(vuoto)',
@@ -597,8 +714,7 @@ export class RunScene extends Phaser.Scene {
         if (!droppedItem) {
             return;
         }
-        const occupied = this.getGroundItemAt(monster.position.x, monster.position.y);
-        if (occupied) {
+        if (Math.random() > 0.5 || this.getGroundItemAt(monster.position.x, monster.position.y)) {
             return;
         }
         this.groundItems.push({
@@ -653,8 +769,9 @@ export class RunScene extends Phaser.Scene {
         this.playerHp = Math.max(0, this.playerHp - mitigatedDamage);
         if (this.playerHp === 0) {
             this.isRunComplete = true;
+            this.completionState = 'dead';
             logLines.push(`${monster.name} ti infligge ${mitigatedDamage} danni. Sei morto nell'archivio.`);
-            logLines.push('Premi R per una nuova run o SPACE per tornare al menu.');
+            logLines.push('Premi B per tornare alla base. Gli oggetti della run sono persi.');
             return;
         }
         logLines.push(`${monster.name} ti colpisce per ${mitigatedDamage}. Ti restano ${this.playerHp} HP.`);
