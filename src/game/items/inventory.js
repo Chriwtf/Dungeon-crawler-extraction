@@ -15,6 +15,7 @@ const createItem = (kind) => {
             return {
                 id: `item-${nextItemId}`,
                 kind,
+                category: 'consumable',
                 name: 'bomba a brace',
                 glyph: '*',
                 color: 0xe37a3f,
@@ -25,17 +26,41 @@ const createItem = (kind) => {
             return {
                 id: `item-${nextItemId}`,
                 kind,
+                category: 'consumable',
                 name: 'stim-pack',
                 glyph: '+',
                 color: 0x8de36b,
                 description: 'Recuperi 2 HP e guadagni un piccolo margine.',
                 healAmount: 2,
             };
+        case 'rusted-blade':
+            return {
+                id: `item-${nextItemId}`,
+                kind,
+                category: 'weapon',
+                name: 'lama arrugginita',
+                glyph: ')',
+                color: 0xd9c27a,
+                description: 'Bonus passivo: +1 danno finche resta nello zaino.',
+                attackBonus: 1,
+            };
+        case 'scrap-armor':
+            return {
+                id: `item-${nextItemId}`,
+                kind,
+                category: 'armor',
+                name: 'corazza di ferraglia',
+                glyph: '[',
+                color: 0x8da0b3,
+                description: 'Bonus passivo: +1 armatura finche resta nello zaino.',
+                armorBonus: 1,
+            };
         case 'medkit':
         default:
             return {
                 id: `item-${nextItemId}`,
                 kind: 'medkit',
+                category: 'consumable',
                 name: 'kit medico',
                 glyph: '!',
                 color: 0x7fd6ff,
@@ -63,7 +88,13 @@ const getAvailableFloorTiles = (tiles, reserved) => {
 };
 export const spawnGroundItems = (tiles, reserved) => {
     const positions = shuffle(getAvailableFloorTiles(tiles, reserved));
-    const itemKinds = ['medkit', 'medkit', 'stim-pack', 'ember-bomb'];
+    const itemKinds = [
+        'medkit',
+        'stim-pack',
+        'ember-bomb',
+        'rusted-blade',
+        'scrap-armor',
+    ];
     const count = Math.min(itemKinds.length, Math.max(2, Math.floor(positions.length / 28)));
     const result = [];
     for (let i = 0; i < count; i += 1) {
@@ -84,6 +115,12 @@ export const rollMonsterDrop = () => {
     }
     if (roll < 0.58) {
         return createItem('ember-bomb');
+    }
+    if (roll < 0.73) {
+        return createItem('rusted-blade');
+    }
+    if (roll < 0.86) {
+        return createItem('scrap-armor');
     }
     return null;
 };

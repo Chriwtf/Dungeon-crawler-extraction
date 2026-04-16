@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { getRandomNeighborSteps, getStepTowardTarget, isAdjacent, rollDamage, spawnMonsters, } from '../combat/monsters';
 import { TurnEngine } from '../core/TurnEngine';
 import { applyItemEffect } from '../items/itemEffects';
+import { BASE_PLAYER_STATS, derivePlayerStats } from '../items/playerStats';
 import { rollMonsterDrop, spawnGroundItems } from '../items/inventory';
 import { generateDungeon, MAP_HEIGHT, MAP_WIDTH, TILE_SIZE, } from '../world/DungeonGenerator';
 const OFFSET_X = 40;
@@ -10,6 +11,14 @@ const INVENTORY_SIZE = 4;
 const MAP_PIXEL_WIDTH = MAP_WIDTH * TILE_SIZE;
 const SIDEBAR_X = OFFSET_X + MAP_PIXEL_WIDTH + 36;
 const PANEL_WIDTH = 320;
+const PANEL_GAP = 16;
+const LOG_PANEL_Y = 56;
+const LOG_PANEL_HEIGHT = 156;
+const INVENTORY_PANEL_Y = LOG_PANEL_Y + LOG_PANEL_HEIGHT + PANEL_GAP;
+const INVENTORY_PANEL_HEIGHT = 228;
+const DETAILS_PANEL_Y = INVENTORY_PANEL_Y + INVENTORY_PANEL_HEIGHT + PANEL_GAP;
+const DETAILS_PANEL_HEIGHT = 180;
+const PANEL_HEADER_HEIGHT = 30;
 export class RunScene extends Phaser.Scene {
     constructor() {
         super('run');
@@ -139,11 +148,11 @@ export class RunScene extends Phaser.Scene {
             writable: true,
             value: 12
         });
-        Object.defineProperty(this, "playerMaxHp", {
+        Object.defineProperty(this, "playerStats", {
             enumerable: true,
             configurable: true,
             writable: true,
-            value: 12
+            value: BASE_PLAYER_STATS
         });
         Object.defineProperty(this, "isRunComplete", {
             enumerable: true,
@@ -166,33 +175,36 @@ export class RunScene extends Phaser.Scene {
             fontSize: '15px',
             color: '#d8e0ea',
         });
-        this.inventoryTitleText = this.add.text(SIDEBAR_X + 16, 309, 'STATO E INVENTARIO', {
+        this.inventoryTitleText = this.add.text(SIDEBAR_X + 16, INVENTORY_PANEL_Y + 5, 'STATO E INVENTARIO', {
             fontFamily: 'monospace',
             fontSize: '15px',
             color: '#d8e0ea',
         });
-        this.statusTitleText = this.add.text(SIDEBAR_X + 16, 549, 'COMANDI E DETTAGLI', {
+        this.statusTitleText = this.add.text(SIDEBAR_X + 16, DETAILS_PANEL_Y + 5, 'COMANDI E DETTAGLI', {
             fontFamily: 'monospace',
             fontSize: '15px',
             color: '#d8e0ea',
         });
-        this.logText = this.add.text(SIDEBAR_X + 18, 78, '', {
+        this.logText = this.add.text(SIDEBAR_X + 18, LOG_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
             fontFamily: 'monospace',
-            fontSize: '15px',
+            fontSize: '13px',
             color: '#9fb0c2',
             wordWrap: { width: PANEL_WIDTH - 36 },
+            lineSpacing: 1,
         });
-        this.inventoryText = this.add.text(SIDEBAR_X + 18, 326, '', {
+        this.inventoryText = this.add.text(SIDEBAR_X + 18, INVENTORY_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
             fontFamily: 'monospace',
-            fontSize: '15px',
+            fontSize: '13px',
             color: '#d8e0ea',
             wordWrap: { width: PANEL_WIDTH - 36 },
+            lineSpacing: 1,
         });
-        this.statusText = this.add.text(SIDEBAR_X + 18, 560, '', {
+        this.statusText = this.add.text(SIDEBAR_X + 18, DETAILS_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
             fontFamily: 'monospace',
-            fontSize: '15px',
+            fontSize: '13px',
             color: '#a9b4c2',
             wordWrap: { width: PANEL_WIDTH - 36 },
+            lineSpacing: 1,
         });
         this.playerRect = this.add.rectangle(0, 0, TILE_SIZE - 8, TILE_SIZE - 8, 0x8be9fd);
         this.setupRun();
@@ -217,7 +229,8 @@ export class RunScene extends Phaser.Scene {
         this.selectedSlot = 0;
         this.objectiveCollected = false;
         this.extractionUnlocked = false;
-        this.playerHp = this.playerMaxHp;
+        this.playerStats = derivePlayerStats(this.inventory);
+        this.playerHp = this.playerStats.maxHp;
         this.isRunComplete = false;
         this.turnEngine = new TurnEngine();
         this.logLines = [
@@ -350,6 +363,7 @@ export class RunScene extends Phaser.Scene {
         this.inventory[freeSlot] = groundItem.item;
         this.selectedSlot = freeSlot;
         this.groundItems = this.groundItems.filter((entry) => entry.item.id !== groundItem.item.id);
+        this.recalculatePlayerStats();
         this.resolvePlayerTurn([`Raccogli ${groundItem.item.name} nello slot ${freeSlot + 1}.`]);
     }
     useSelectedItem() {
@@ -359,10 +373,15 @@ export class RunScene extends Phaser.Scene {
             this.refreshHud();
             return;
         }
+        if (item.category !== 'consumable') {
+            this.addLogLines([`${item.name} e passivo: il bonus resta finche occupa lo slot.`]);
+            this.refreshHud();
+            return;
+        }
         const result = applyItemEffect({
             item,
             playerHp: this.playerHp,
-            playerMaxHp: this.playerMaxHp,
+            playerMaxHp: this.playerStats.maxHp,
             playerPosition: this.player,
             monsters: this.monsters,
         });
@@ -384,6 +403,7 @@ export class RunScene extends Phaser.Scene {
             }
         }
         this.inventory[this.selectedSlot] = null;
+        this.recalculatePlayerStats();
         this.resolvePlayerTurn(result.logLines);
     }
     dropSelectedItem() {
@@ -403,6 +423,7 @@ export class RunScene extends Phaser.Scene {
             item,
             position: { ...this.player },
         });
+        this.recalculatePlayerStats();
         this.resolvePlayerTurn([`Lasci ${item.name} a terra.`]);
     }
     selectNextSlot() {
@@ -425,17 +446,17 @@ export class RunScene extends Phaser.Scene {
         this.mapGraphics.clear();
         this.uiGraphics.clear();
         this.uiGraphics.fillStyle(0x0f141b, 0.95);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, 56, PANEL_WIDTH, 228, 10);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, 304, PANEL_WIDTH, 232, 10);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, 544, PANEL_WIDTH, 132, 10);
+        this.uiGraphics.fillRoundedRect(SIDEBAR_X, LOG_PANEL_Y, PANEL_WIDTH, LOG_PANEL_HEIGHT, 10);
+        this.uiGraphics.fillRoundedRect(SIDEBAR_X, INVENTORY_PANEL_Y, PANEL_WIDTH, INVENTORY_PANEL_HEIGHT, 10);
+        this.uiGraphics.fillRoundedRect(SIDEBAR_X, DETAILS_PANEL_Y, PANEL_WIDTH, DETAILS_PANEL_HEIGHT, 10);
         this.uiGraphics.lineStyle(1, 0x2b3440, 1);
-        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, 56, PANEL_WIDTH, 228, 10);
-        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, 304, PANEL_WIDTH, 232, 10);
-        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, 544, PANEL_WIDTH, 132, 10);
+        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, LOG_PANEL_Y, PANEL_WIDTH, LOG_PANEL_HEIGHT, 10);
+        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, INVENTORY_PANEL_Y, PANEL_WIDTH, INVENTORY_PANEL_HEIGHT, 10);
+        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, DETAILS_PANEL_Y, PANEL_WIDTH, DETAILS_PANEL_HEIGHT, 10);
         this.uiGraphics.fillStyle(0x18202b, 1);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, 56, PANEL_WIDTH, 28, 10);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, 304, PANEL_WIDTH, 28, 10);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, 544, PANEL_WIDTH, 28, 10);
+        this.uiGraphics.fillRoundedRect(SIDEBAR_X, LOG_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
+        this.uiGraphics.fillRoundedRect(SIDEBAR_X, INVENTORY_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
+        this.uiGraphics.fillRoundedRect(SIDEBAR_X, DETAILS_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
         for (let y = 0; y < MAP_HEIGHT; y += 1) {
             for (let x = 0; x < MAP_WIDTH; x += 1) {
                 const tile = this.tiles[y][x];
@@ -475,7 +496,9 @@ export class RunScene extends Phaser.Scene {
     refreshHud() {
         this.hudText.setText([
             `Turno: ${this.turnEngine.currentTurn}`,
-            `HP: ${this.playerHp}/${this.playerMaxHp}`,
+            `HP: ${this.playerHp}/${this.playerStats.maxHp}`,
+            `ATT: ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
+            `ARM: ${this.playerStats.armor}`,
             `Reperto: ${this.objectiveCollected ? 'RECUPERATO' : 'MANCANTE'}`,
             `Estrazione: ${this.extractionUnlocked ? 'ATTIVA' : 'BLOCCATA'}`,
             `Mostri: ${this.monsters.length}`,
@@ -488,11 +511,18 @@ export class RunScene extends Phaser.Scene {
         this.logText.setText(this.logLines.join('\n'));
     }
     buildInventoryText() {
-        const lines = [`Vita: ${this.playerHp}/${this.playerMaxHp}`, '', 'INVENTARIO'];
+        const lines = [
+            `Vita ${this.playerHp}/${this.playerStats.maxHp}`,
+            `Attacco ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
+            `Armatura ${this.playerStats.armor}`,
+            '',
+            'INVENTARIO',
+        ];
         for (let index = 0; index < INVENTORY_SIZE; index += 1) {
             const item = this.inventory[index];
             const marker = index === this.selectedSlot ? '>' : ' ';
-            lines.push(`${marker} [${index + 1}] ${item ? item.name : '(vuoto)'}`);
+            const itemLabel = item ? `${item.name}${this.getPassiveTag(item)}` : '(vuoto)';
+            lines.push(`${marker} [${index + 1}] ${itemLabel}`);
         }
         const groundItem = this.getGroundItemAt(this.player.x, this.player.y);
         lines.push('');
@@ -503,15 +533,31 @@ export class RunScene extends Phaser.Scene {
     buildStatusText() {
         const selectedItem = this.inventory[this.selectedSlot];
         return [
-            'G raccogli',
-            'F usa slot attivo',
-            'Q lascia a terra',
-            'TAB o 1-4 cambia slot',
+            'G raccogli da terra',
+            'F usa consumabile',
+            'Q lascia oggetto',
+            'TAB / 1-4 cambia slot',
             '',
             'DETTAGLIO SLOT',
             selectedItem ? `${selectedItem.name}` : '(vuoto)',
             selectedItem ? selectedItem.description : 'Seleziona uno slot pieno per usarlo.',
         ].join('\n');
+    }
+    getPassiveTag(item) {
+        if (item.category === 'weapon') {
+            return ` (+${item.attackBonus ?? 0} att)`;
+        }
+        if (item.category === 'armor') {
+            return ` (+${item.armorBonus ?? 0} arm)`;
+        }
+        return '';
+    }
+    recalculatePlayerStats() {
+        const previousMaxHp = this.playerStats.maxHp;
+        this.playerStats = derivePlayerStats(this.inventory);
+        if (this.playerStats.maxHp !== previousMaxHp) {
+            this.playerHp = Math.min(this.playerHp, this.playerStats.maxHp);
+        }
     }
     resolvePlayerTurn(logLines) {
         if (this.isRunComplete) {
@@ -528,7 +574,7 @@ export class RunScene extends Phaser.Scene {
         for (let index = lines.length - 1; index >= 0; index -= 1) {
             this.logLines.unshift(lines[index]);
         }
-        this.logLines = this.logLines.slice(0, 8);
+        this.logLines = this.logLines.slice(0, 6);
     }
     getMonsterAt(x, y) {
         return this.monsters.find((monster) => monster.position.x === x && monster.position.y === y);
@@ -537,7 +583,7 @@ export class RunScene extends Phaser.Scene {
         return this.groundItems.find((entry) => entry.position.x === x && entry.position.y === y);
     }
     attackMonster(monster) {
-        const damage = rollDamage(2, 4);
+        const damage = rollDamage(this.playerStats.attackMin, this.playerStats.attackMax);
         monster.hp -= damage;
         if (monster.hp <= 0) {
             this.monsters = this.monsters.filter((candidate) => candidate.id !== monster.id);
@@ -602,14 +648,15 @@ export class RunScene extends Phaser.Scene {
         return false;
     }
     attackPlayer(monster, logLines) {
-        const damage = rollDamage(monster.damageMin, monster.damageMax);
-        this.playerHp = Math.max(0, this.playerHp - damage);
+        const incomingDamage = rollDamage(monster.damageMin, monster.damageMax);
+        const mitigatedDamage = Math.max(1, incomingDamage - this.playerStats.armor);
+        this.playerHp = Math.max(0, this.playerHp - mitigatedDamage);
         if (this.playerHp === 0) {
             this.isRunComplete = true;
-            logLines.push(`${monster.name} ti infligge ${damage} danni. Sei morto nell'archivio.`);
+            logLines.push(`${monster.name} ti infligge ${mitigatedDamage} danni. Sei morto nell'archivio.`);
             logLines.push('Premi R per una nuova run o SPACE per tornare al menu.');
             return;
         }
-        logLines.push(`${monster.name} ti colpisce per ${damage}. Ti restano ${this.playerHp} HP.`);
+        logLines.push(`${monster.name} ti colpisce per ${mitigatedDamage}. Ti restano ${this.playerHp} HP.`);
     }
 }
