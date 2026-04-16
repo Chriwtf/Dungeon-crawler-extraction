@@ -7,10 +7,20 @@ import {
   unequipLoadoutItem,
 } from '../state/metaProgression';
 import type { Item } from '../items/inventory';
+import {
+  applyTextGlow,
+  createTextStyle,
+  drawBackdrop,
+  drawScanlines,
+  drawScreenFrame,
+  drawTerminalPanel,
+  matrixPalette,
+} from '../ui/matrixTheme';
 
 const LOADOUT_SIZE = 4;
 
 export class BaseScene extends Phaser.Scene {
+  private chromeGraphics!: Phaser.GameObjects.Graphics;
   private titleText!: Phaser.GameObjects.Text;
   private helpText!: Phaser.GameObjects.Text;
   private stashText!: Phaser.GameObjects.Text;
@@ -26,64 +36,52 @@ export class BaseScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor('#091015');
+    this.cameras.main.setBackgroundColor('#020604');
 
-    this.titleText = this.add.text(GAME_WIDTH / 2, 54, 'BASE / STASH', {
-      fontFamily: 'monospace',
-      fontSize: '30px',
-      color: '#d8e0ea',
-    }).setOrigin(0.5);
+    const backdrop = this.add.graphics();
+    drawBackdrop(backdrop, GAME_WIDTH, GAME_HEIGHT);
+
+    this.chromeGraphics = this.add.graphics();
+    drawScreenFrame(this.chromeGraphics, GAME_WIDTH, GAME_HEIGHT);
+    drawTerminalPanel({ graphics: this.chromeGraphics, x: 54, y: 146, width: 454, height: 512, headerHeight: 34 });
+    drawTerminalPanel({ graphics: this.chromeGraphics, x: 560, y: 146, width: 626, height: 244, headerHeight: 34 });
+    drawTerminalPanel({ graphics: this.chromeGraphics, x: 560, y: 414, width: 626, height: 244, headerHeight: 34 });
+
+    this.titleText = applyTextGlow(
+      this.add.text(GAME_WIDTH / 2, 52, 'SAFEHOUSE // STASH TERMINAL', createTextStyle('30px', matrixPalette.accent, 'center')),
+      matrixPalette.accent,
+      16,
+    ).setOrigin(0.5);
 
     this.helpText = this.add.text(GAME_WIDTH / 2, 98, '', {
-      fontFamily: 'monospace',
-      fontSize: '16px',
-      color: '#9fb0c2',
-      align: 'center',
+      ...createTextStyle('15px', matrixPalette.textDim, 'center'),
+      lineSpacing: 4,
     }).setOrigin(0.5);
 
-    this.add.rectangle(280, 405, 420, 470, 0x101821, 0.96).setStrokeStyle(1, 0x2c3745);
-    this.add.rectangle(780, 290, 380, 240, 0x101821, 0.96).setStrokeStyle(1, 0x2c3745);
-    this.add.rectangle(780, 520, 380, 210, 0x101821, 0.96).setStrokeStyle(1, 0x2c3745);
-
-    this.add.text(100, 175, 'STASH', {
-      fontFamily: 'monospace',
-      fontSize: '18px',
-      color: '#d8e0ea',
-    });
-    this.add.text(610, 175, 'LOADOUT PROSSIMA RUN', {
-      fontFamily: 'monospace',
-      fontSize: '18px',
-      color: '#d8e0ea',
-    });
-    this.add.text(610, 415, 'DETTAGLIO', {
-      fontFamily: 'monospace',
-      fontSize: '18px',
-      color: '#d8e0ea',
-    });
+    this.add.text(80, 154, 'ARCHIVE STASH', createTextStyle('16px', matrixPalette.text));
+    this.add.text(586, 154, 'RUN LOADOUT', createTextStyle('16px', matrixPalette.text));
+    this.add.text(586, 422, 'ITEM DETAIL', createTextStyle('16px', matrixPalette.text));
 
     this.stashText = this.add.text(86, 205, '', {
-      fontFamily: 'monospace',
-      fontSize: '15px',
-      color: '#d8e0ea',
+      ...createTextStyle('15px', matrixPalette.text),
       lineSpacing: 2,
       wordWrap: { width: 380 },
     });
 
     this.loadoutText = this.add.text(610, 205, '', {
-      fontFamily: 'monospace',
-      fontSize: '15px',
-      color: '#d8e0ea',
+      ...createTextStyle('16px', matrixPalette.text),
       lineSpacing: 4,
       wordWrap: { width: 330 },
     });
 
     this.detailText = this.add.text(610, 445, '', {
-      fontFamily: 'monospace',
-      fontSize: '15px',
-      color: '#9fb0c2',
+      ...createTextStyle('15px', matrixPalette.textDim),
       lineSpacing: 3,
-      wordWrap: { width: 330 },
+      wordWrap: { width: 540 },
     });
+
+    const scanlines = this.add.graphics();
+    drawScanlines(scanlines, GAME_WIDTH, GAME_HEIGHT, 4);
 
     this.bindInput();
     this.reloadState();
@@ -168,23 +166,23 @@ export class BaseScene extends Phaser.Scene {
 
   private refreshTexts(): void {
     this.helpText.setText([
-      'UP/DOWN seleziona stash   1-4 cambia slot loadout',
-      'E equipaggia dallo stash   Q rimette nello stash   SPACE parte   ESC menu',
-      'Gli oggetti equipaggiati escono dalla stash e, se muori, vengono persi.',
+      'W/S scorri stash   1-4 scegli slot loadout',
+      'E equipaggia   Q rimetti in stash   SPACE avvia run   ESC torna al menu',
+      'Gli oggetti caricati escono dalla stash e vengono persi se muori nella spedizione.',
     ].join('\n'));
 
     const stashLines = this.stash.length === 0
-      ? ['(stash vuota)', '', 'Rientra da un\'estrazione per depositare gli oggetti trovati.']
+      ? ['(stash vuota)', '', 'Rientra da un\'estrazione per depositare il bottino recuperato.']
       : this.stash.map((item, index) => {
-          const marker = index === this.stashIndex ? '>' : ' ';
+          const marker = index === this.stashIndex ? '[>]' : '[ ]';
           return `${marker} ${item.name}`;
         });
 
     this.stashText.setText(stashLines.join('\n'));
 
     const loadoutLines = this.loadout.map((item, index) => {
-      const marker = index === this.selectedSlot ? '>' : ' ';
-      return `${marker} [${index + 1}] ${item ? item.name : '(vuoto)'}`;
+      const marker = index === this.selectedSlot ? '[>]' : '[ ]';
+      return `${marker} SLOT ${index + 1}  ${item ? item.name : '(vuoto)'}`;
     });
     this.loadoutText.setText(loadoutLines.join('\n'));
 
@@ -194,11 +192,11 @@ export class BaseScene extends Phaser.Scene {
 
     this.detailText.setText([
       `Slot attivo: ${this.selectedSlot + 1}`,
-      selectedStashItem ? `Stash selezionata: ${selectedStashItem.name}` : 'Stash selezionata: (vuota)',
+      selectedStashItem ? `Riga stash: ${selectedStashItem.name}` : 'Riga stash: (vuota)',
       '',
       detailItem ? detailItem.description : 'Nessun oggetto selezionato.',
       '',
-      'Se premi SPACE, la run parte con il loadout mostrato qui sopra.',
+      'Premendo SPACE la run parte con il loadout mostrato sopra.',
     ].join('\n'));
   }
 }

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { GAME_HEIGHT, GAME_WIDTH } from '../config';
 import { getRandomNeighborSteps, getStepTowardTarget, isAdjacent, rollDamage, spawnMonsters, } from '../combat/monsters';
 import { TurnEngine } from '../core/TurnEngine';
 import { applyItemEffect } from '../items/itemEffects';
@@ -6,6 +7,7 @@ import { cloneItem, rollMonsterDrop, spawnGroundItems, } from '../items/inventor
 import { BASE_PLAYER_STATS, derivePlayerStats } from '../items/playerStats';
 import { depositInventoryToStash } from '../state/metaProgression';
 import { createDungeonConfigForDepth, generateDungeon, } from '../world/DungeonGenerator';
+import { applyTextGlow, createTextStyle, drawBackdrop, drawScanlines, drawScreenFrame, drawTerminalPanel, matrixPalette, } from '../ui/matrixTheme';
 const INVENTORY_SIZE = 4;
 const MAP_AREA_X = 40;
 const MAP_AREA_Y = 56;
@@ -78,6 +80,12 @@ export class RunScene extends Phaser.Scene {
             writable: true,
             value: new TurnEngine()
         });
+        Object.defineProperty(this, "backdropGraphics", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         Object.defineProperty(this, "mapGraphics", {
             enumerable: true,
             configurable: true,
@@ -85,6 +93,12 @@ export class RunScene extends Phaser.Scene {
             value: void 0
         });
         Object.defineProperty(this, "uiGraphics", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "scanlineGraphics", {
             enumerable: true,
             configurable: true,
             writable: true,
@@ -211,57 +225,45 @@ export class RunScene extends Phaser.Scene {
         this.playerHp = data.carriedHp ?? BASE_PLAYER_STATS.maxHp;
     }
     create() {
-        this.cameras.main.setBackgroundColor('#050608');
+        this.cameras.main.setBackgroundColor('#020604');
+        this.backdropGraphics = this.add.graphics();
+        drawBackdrop(this.backdropGraphics, GAME_WIDTH, GAME_HEIGHT);
         this.mapGraphics = this.add.graphics();
         this.uiGraphics = this.add.graphics();
+        this.scanlineGraphics = this.add.graphics();
+        const frame = this.add.graphics();
+        drawScreenFrame(frame, GAME_WIDTH, GAME_HEIGHT);
         this.hudText = this.add.text(40, 16, '', {
-            fontFamily: 'monospace',
-            fontSize: '17px',
-            color: '#d8e0ea',
+            ...createTextStyle('17px', matrixPalette.text),
         });
-        this.logTitleText = this.add.text(SIDEBAR_X + 16, 61, 'LOG EVENTI', {
-            fontFamily: 'monospace',
-            fontSize: '15px',
-            color: '#d8e0ea',
-        });
-        this.inventoryTitleText = this.add.text(SIDEBAR_X + 16, INVENTORY_PANEL_Y + 5, 'STATO E INVENTARIO', {
-            fontFamily: 'monospace',
-            fontSize: '15px',
-            color: '#d8e0ea',
-        });
-        this.statusTitleText = this.add.text(SIDEBAR_X + 16, DETAILS_PANEL_Y + 5, 'COMANDI E DETTAGLI', {
-            fontFamily: 'monospace',
-            fontSize: '15px',
-            color: '#d8e0ea',
-        });
+        applyTextGlow(this.hudText, matrixPalette.accent, 8);
+        this.logTitleText = this.add.text(SIDEBAR_X + 16, 61, 'SYS LOG', createTextStyle('15px', matrixPalette.text));
+        this.inventoryTitleText = this.add.text(SIDEBAR_X + 16, INVENTORY_PANEL_Y + 5, 'STATUS // INVENTORY', createTextStyle('15px', matrixPalette.text));
+        this.statusTitleText = this.add.text(SIDEBAR_X + 16, DETAILS_PANEL_Y + 5, 'COMMANDS // DETAIL', createTextStyle('15px', matrixPalette.text));
         this.logText = this.add.text(SIDEBAR_X + 18, LOG_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
-            fontFamily: 'monospace',
-            fontSize: '13px',
-            color: '#9fb0c2',
+            ...createTextStyle('13px', matrixPalette.textDim),
             wordWrap: { width: PANEL_WIDTH - 36 },
             lineSpacing: 1,
         });
         this.inventoryText = this.add.text(SIDEBAR_X + 18, INVENTORY_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
-            fontFamily: 'monospace',
-            fontSize: '13px',
-            color: '#d8e0ea',
+            ...createTextStyle('13px', matrixPalette.text),
             wordWrap: { width: PANEL_WIDTH - 36 },
             lineSpacing: 1,
         });
         this.statusText = this.add.text(SIDEBAR_X + 18, DETAILS_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
-            fontFamily: 'monospace',
-            fontSize: '13px',
-            color: '#a9b4c2',
+            ...createTextStyle('13px', matrixPalette.textDim),
             wordWrap: { width: PANEL_WIDTH - 36 },
             lineSpacing: 1,
         });
-        this.playerRect = this.add.rectangle(0, 0, this.tileSize - 8, this.tileSize - 8, 0x8be9fd);
+        this.playerRect = this.add.rectangle(0, 0, this.tileSize - 8, this.tileSize - 8, 0x7dff9b);
+        this.playerRect.setStrokeStyle(1, 0xc8ffd7, 0.7);
         this.setupRun({
             depth: this.currentDepth,
             carryInventory: this.inventory,
             carryHp: this.playerHp,
         });
         this.bindInput();
+        drawScanlines(this.scanlineGraphics, GAME_WIDTH, GAME_HEIGHT, 4);
     }
     normalizeInventory(source) {
         const inventory = Array(INVENTORY_SIZE).fill(null);
@@ -545,45 +547,69 @@ export class RunScene extends Phaser.Scene {
     drawMap() {
         this.mapGraphics.clear();
         this.uiGraphics.clear();
-        this.uiGraphics.fillStyle(0x0f141b, 0.95);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, LOG_PANEL_Y, PANEL_WIDTH, LOG_PANEL_HEIGHT, 10);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, INVENTORY_PANEL_Y, PANEL_WIDTH, INVENTORY_PANEL_HEIGHT, 10);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, DETAILS_PANEL_Y, PANEL_WIDTH, DETAILS_PANEL_HEIGHT, 10);
-        this.uiGraphics.lineStyle(1, 0x2b3440, 1);
-        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, LOG_PANEL_Y, PANEL_WIDTH, LOG_PANEL_HEIGHT, 10);
-        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, INVENTORY_PANEL_Y, PANEL_WIDTH, INVENTORY_PANEL_HEIGHT, 10);
-        this.uiGraphics.strokeRoundedRect(SIDEBAR_X, DETAILS_PANEL_Y, PANEL_WIDTH, DETAILS_PANEL_HEIGHT, 10);
-        this.uiGraphics.fillStyle(0x18202b, 1);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, LOG_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, INVENTORY_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
-        this.uiGraphics.fillRoundedRect(SIDEBAR_X, DETAILS_PANEL_Y, PANEL_WIDTH, PANEL_HEADER_HEIGHT, 10);
+        this.uiGraphics.fillStyle(0x08130f, 0.42);
+        this.uiGraphics.fillRoundedRect(MAP_AREA_X - 18, MAP_AREA_Y - 18, MAP_AREA_WIDTH + 36, MAP_AREA_HEIGHT + 36, 14);
+        this.uiGraphics.lineStyle(2, 0x2a7a4b, 0.5);
+        this.uiGraphics.strokeRoundedRect(MAP_AREA_X - 18, MAP_AREA_Y - 18, MAP_AREA_WIDTH + 36, MAP_AREA_HEIGHT + 36, 14);
+        this.uiGraphics.lineStyle(1, 0x19412b, 0.22);
+        for (let x = MAP_AREA_X; x <= MAP_AREA_X + MAP_AREA_WIDTH; x += 24) {
+            this.uiGraphics.lineBetween(x, MAP_AREA_Y, x, MAP_AREA_Y + MAP_AREA_HEIGHT);
+        }
+        for (let y = MAP_AREA_Y; y <= MAP_AREA_Y + MAP_AREA_HEIGHT; y += 24) {
+            this.uiGraphics.lineBetween(MAP_AREA_X, y, MAP_AREA_X + MAP_AREA_WIDTH, y);
+        }
+        drawTerminalPanel({ graphics: this.uiGraphics, x: SIDEBAR_X, y: LOG_PANEL_Y, width: PANEL_WIDTH, height: LOG_PANEL_HEIGHT, headerHeight: PANEL_HEADER_HEIGHT });
+        drawTerminalPanel({
+            graphics: this.uiGraphics,
+            x: SIDEBAR_X,
+            y: INVENTORY_PANEL_Y,
+            width: PANEL_WIDTH,
+            height: INVENTORY_PANEL_HEIGHT,
+            headerHeight: PANEL_HEADER_HEIGHT,
+        });
+        drawTerminalPanel({
+            graphics: this.uiGraphics,
+            x: SIDEBAR_X,
+            y: DETAILS_PANEL_Y,
+            width: PANEL_WIDTH,
+            height: DETAILS_PANEL_HEIGHT,
+            headerHeight: PANEL_HEADER_HEIGHT,
+        });
         for (let y = 0; y < this.mapHeight; y += 1) {
             for (let x = 0; x < this.mapWidth; x += 1) {
                 const tile = this.tiles[y][x];
                 const color = this.getTileColor(tile);
-                this.mapGraphics.fillStyle(color, 1);
+                this.mapGraphics.fillStyle(color, tile === 'wall' ? 0.82 : 1);
                 this.mapGraphics.fillRect(this.mapOriginX + x * this.tileSize, this.mapOriginY + y * this.tileSize, this.tileSize - 1, this.tileSize - 1);
+                if (tile !== 'wall') {
+                    this.mapGraphics.fillStyle(0xc8ffd7, tile === 'floor' ? 0.025 : 0.06);
+                    this.mapGraphics.fillRect(this.mapOriginX + x * this.tileSize + 2, this.mapOriginY + y * this.tileSize + 2, this.tileSize - 5, Math.max(2, Math.floor(this.tileSize * 0.12)));
+                }
             }
         }
         for (const groundItem of this.groundItems) {
             this.mapGraphics.fillStyle(groundItem.item.color, 1);
             this.mapGraphics.fillCircle(this.mapOriginX + groundItem.position.x * this.tileSize + this.tileSize / 2, this.mapOriginY + groundItem.position.y * this.tileSize + this.tileSize / 2, Math.max(4, Math.floor(this.tileSize * 0.22)));
+            this.mapGraphics.lineStyle(1, 0xc8ffd7, 0.35);
+            this.mapGraphics.strokeCircle(this.mapOriginX + groundItem.position.x * this.tileSize + this.tileSize / 2, this.mapOriginY + groundItem.position.y * this.tileSize + this.tileSize / 2, Math.max(6, Math.floor(this.tileSize * 0.28)));
         }
         for (const monster of this.monsters) {
             this.mapGraphics.fillStyle(monster.color, 1);
             this.mapGraphics.fillRect(this.mapOriginX + monster.position.x * this.tileSize + 4, this.mapOriginY + monster.position.y * this.tileSize + 4, this.tileSize - 8, this.tileSize - 8);
+            this.mapGraphics.lineStyle(1, 0x020604, 0.7);
+            this.mapGraphics.strokeRect(this.mapOriginX + monster.position.x * this.tileSize + 4, this.mapOriginY + monster.position.y * this.tileSize + 4, this.tileSize - 8, this.tileSize - 8);
         }
     }
     getTileColor(tile) {
         switch (tile) {
             case 'wall':
-                return 0x12161d;
+                return 0x08110d;
             case 'floor':
-                return 0x29313d;
+                return 0x103222;
             case 'objective':
-                return 0xd9a441;
+                return 0xd7ff6c;
             case 'extraction':
-                return this.extractionUnlocked ? 0x4bc97b : 0x4a5c68;
+                return this.extractionUnlocked ? 0x66ffcc : 0x295344;
             default:
                 return 0xffffff;
         }
@@ -610,15 +636,15 @@ export class RunScene extends Phaser.Scene {
     }
     buildInventoryText() {
         const lines = [
-            `Vita ${this.playerHp}/${this.playerStats.maxHp}`,
-            `Attacco ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
+            `Integrita ${this.playerHp}/${this.playerStats.maxHp}`,
+            `Danno ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
             `Armatura ${this.playerStats.armor}`,
             '',
             'INVENTARIO ATTIVO',
         ];
         for (let index = 0; index < INVENTORY_SIZE; index += 1) {
             const item = this.inventory[index];
-            const marker = index === this.selectedSlot ? '>' : ' ';
+            const marker = index === this.selectedSlot ? '[>]' : '[ ]';
             const itemLabel = item ? `${item.name}${this.getPassiveTag(item)}` : '(vuoto)';
             lines.push(`${marker} [${index + 1}] ${itemLabel}`);
         }

@@ -1,7 +1,13 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, sans-serif;
-  background: #0b0d10;
+  font-family: "Lucida Console", "Courier New", monospace;
+  background:
+    radial-gradient(circle at top, rgba(28, 93, 57, 0.28), transparent 38%),
+    radial-gradient(circle at bottom, rgba(10, 55, 32, 0.3), transparent 34%),
+    linear-gradient(180deg, #04100a 0%, #020604 48%, #010302 100%);
+  --matrix-bg: #020604;
+  --matrix-border: rgba(125, 255, 155, 0.25);
+  --matrix-glow: rgba(125, 255, 155, 0.16);
 }
 
 * {
@@ -15,10 +21,53 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #0b0d10;
+  background: transparent;
+}
+
+body::before,
+#app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+body::before {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(0, 0, 0, 0) 0,
+      rgba(0, 0, 0, 0) 3px,
+      rgba(0, 0, 0, 0.16) 4px
+    );
+  opacity: 0.5;
+}
+
+#app {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+#app::before {
+  inset: 22px;
+  border: 1px solid var(--matrix-border);
+  box-shadow:
+    0 0 0 1px rgba(7, 23, 14, 0.9) inset,
+    0 0 28px var(--matrix-glow),
+    0 0 80px rgba(0, 0, 0, 0.5) inset;
+  border-radius: 18px;
 }
 
 canvas {
   display: block;
   margin: 0 auto;
+  max-width: min(100vw, 1240px);
+  max-height: min(100vh, 720px);
+  border: 1px solid rgba(125, 255, 155, 0.18);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 1px rgba(4, 18, 11, 0.95) inset,
+    0 0 22px rgba(125, 255, 155, 0.15),
+    0 0 120px rgba(0, 0, 0, 0.65);
 }
