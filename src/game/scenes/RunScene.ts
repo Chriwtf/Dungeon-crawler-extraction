@@ -4,6 +4,9 @@ import {
   getRandomNeighborSteps,
   getStepTowardTarget,
   isAdjacent,
+  isBossDepth,
+  isFinalDepth,
+  MAX_DUNGEON_DEPTH,
   rollDamage,
   spawnMonsters,
   type Monster,
@@ -64,9 +67,8 @@ const INVENTORY_PANEL_HEIGHT = 238;
 const DETAILS_PANEL_Y = INVENTORY_PANEL_Y + INVENTORY_PANEL_HEIGHT + PANEL_GAP;
 const DETAILS_PANEL_HEIGHT = 180;
 const PANEL_HEADER_HEIGHT = 30;
-const PASSIVE_REGEN_INTERVAL = 6;
 
-type CompletionState = 'none' | 'extracted' | 'dead';
+type CompletionState = 'none' | 'extracted' | 'dead' | 'victory';
 
 type RunSceneData = {
   depth?: number;
@@ -83,6 +85,10 @@ export class RunScene extends Phaser.Scene {
   private selectedSlot = 0;
   private objectiveCollected = false;
   private extractionUnlocked = false;
+  private isBossFloor = false;
+  private isFinalFloor = false;
+  private bossDefeated = false;
+  private bossMonsterId: string | null = null;
   private turnEngine = new TurnEngine();
   private backdropGraphics!: Phaser.GameObjects.Graphics;
   private mapGraphics!: Phaser.GameObjects.Graphics;
@@ -118,7 +124,7 @@ export class RunScene extends Phaser.Scene {
   }
 
   init(data: RunSceneData): void {
-    this.currentDepth = Math.max(1, data.depth ?? 1);
+    this.currentDepth = Phaser.Math.Clamp(data.depth ?? 1, 1, MAX_DUNGEON_DEPTH);
     this.inventory = this.normalizeInventory(data.startingInventory);
     this.playerHp = data.carriedHp ?? BASE_PLAYER_STATS.maxHp;
   }
@@ -220,7 +226,8 @@ export class RunScene extends Phaser.Scene {
     carryInventory?: Array<Item | null>;
     carryHp?: number;
   }): void {
-    const dungeonConfig = createDungeonConfigForDepth(depth);
+    const clampedDepth = Phaser.Math.Clamp(depth, 1, MAX_DUNGEON_DEPTH);
+    const dungeonConfig = createDungeonConfigForDepth(clampedDepth);
     const dungeon = generateDungeon(dungeonConfig);
     const safeSpawnArea = [
       dungeon.playerStart,
@@ -232,16 +239,25 @@ export class RunScene extends Phaser.Scene {
       { x: dungeon.playerStart.x, y: dungeon.playerStart.y - 1 },
     ];
 
-    this.currentDepth = depth;
+    this.currentDepth = clampedDepth;
     this.tiles = dungeon.tiles;
+    this.isBossFloor = isBossDepth(clampedDepth);
+    this.isFinalFloor = isFinalDepth(clampedDepth);
+
+    if (this.isBossFloor) {
+      this.tiles[dungeon.objective.y][dungeon.objective.x] = 'floor';
+    }
+
     this.player = { ...dungeon.playerStart };
-    this.monsters = spawnMonsters(this.tiles, safeSpawnArea, depth);
-    this.groundItems = spawnGroundItems(this.tiles, safeSpawnArea, depth);
+    this.monsters = spawnMonsters(this.tiles, safeSpawnArea, clampedDepth);
+    this.groundItems = spawnGroundItems(this.tiles, safeSpawnArea, clampedDepth);
     this.inventory = this.normalizeInventory(carryInventory);
     this.selectedSlot = 0;
-    this.objectiveCollected = false;
+    this.objectiveCollected = this.isBossFloor;
     this.extractionUnlocked = false;
-    if (depth === 1) {
+    this.bossDefeated = false;
+    this.bossMonsterId = this.monsters.find((monster) => monster.isBoss)?.id ?? null;
+    if (clampedDepth === 1) {
       this.currentLevel = 1;
       this.currentXp = 0;
       this.xpToNextLevel = getXpToNextLevel(this.currentLevel);
@@ -253,9 +269,8 @@ export class RunScene extends Phaser.Scene {
     this.turnEngine = new TurnEngine();
     this.logLines = [
       `Sei nel livello ${this.currentDepth} dell'archivio.`,
-      depth === 1
-        ? 'Recupera il reperto, saccheggia e valuta se approfondire o rientrare.'
-        : 'Il dungeon si espande. Nemici e corridoi diventano piu letali.',
+      this.getDepthIntroLine(),
+      this.getDepthObjectiveLine(),
       'Se torni alla base, tutto cio che porti con te finira nella stash.',
     ];
 
@@ -336,6 +351,10 @@ export class RunScene extends Phaser.Scene {
   private handleRunCompleteInput(code: string): void {
     if (this.completionState === 'extracted') {
       if (code === 'KeyC') {
+        if (this.currentDepth >= MAX_DUNGEON_DEPTH) {
+          return;
+        }
+
         this.setupRun({
           depth: this.currentDepth + 1,
           carryInventory: this.inventory,
@@ -349,6 +368,14 @@ export class RunScene extends Phaser.Scene {
         this.scene.start('base');
         return;
       }
+    }
+
+    if (this.completionState === 'victory') {
+      if (code === 'KeyB') {
+        depositInventoryToStash(this.inventory);
+        this.scene.start('base');
+      }
+      return;
     }
 
     if (code === 'KeyB') {
@@ -388,7 +415,9 @@ export class RunScene extends Phaser.Scene {
     } else if (tile === 'extraction') {
       logLine = this.extractionUnlocked
         ? 'Sei sulla zona di estrazione. Premi E per decidere se continuare o tornare alla base.'
-        : 'L\'estrazione e sigillata. Ti manca il reperto.';
+        : this.isBossFloor
+          ? 'L\'estrazione e sigillata. Il boss di piano e ancora vivo.'
+          : 'L\'estrazione e sigillata. Ti manca il reperto.';
     } else if (this.getGroundItemAt(this.player.x, this.player.y)) {
       logLine = 'C\'e un oggetto qui. Premi G per raccoglierlo.';
     }
@@ -403,10 +432,20 @@ export class RunScene extends Phaser.Scene {
       this.isRunComplete = true;
       this.completionState = 'extracted';
       this.turnEngine.next('Estrazione raggiunta. Scegli se continuare o tornare alla base.');
+      const completionLines = this.currentDepth < MAX_DUNGEON_DEPTH
+        ? [
+            'Hai raggiunto l\'estrazione con successo.',
+            'Premi C per una mappa piu grande e difficile.',
+            'Premi B per tornare alla base e depositare tutto nella stash.',
+          ]
+        : [
+            'Hai completato il dodicesimo livello.',
+            'Non ci sono altri piani oltre questo archivio.',
+            'Premi B per tornare alla base e depositare tutto nella stash.',
+          ];
+
       this.addLogLines([
-        'Hai raggiunto l\'estrazione con successo.',
-        'Premi C per una mappa piu grande e difficile.',
-        'Premi B per tornare alla base e depositare tutto nella stash.',
+        ...completionLines,
       ]);
       this.drawMap();
       this.refreshHud();
@@ -479,7 +518,9 @@ export class RunScene extends Phaser.Scene {
 
       for (const monster of removedMonsters) {
         this.dropItemFromMonster(monster);
-        bonusLogLines.push(...this.grantExperience(monster.expReward));
+        bonusLogLines.push(
+          ...this.handleMonsterDefeat(monster, this.grantExperience(monster.expReward)),
+        );
       }
     }
 
@@ -678,7 +719,7 @@ export class RunScene extends Phaser.Scene {
         `HP: ${this.playerHp}/${this.playerStats.maxHp}`,
         `ATT: ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
         `ARM: ${this.playerStats.armor}`,
-        `Reperto: ${this.objectiveCollected ? 'RECUPERATO' : 'MANCANTE'}`,
+        this.getObjectiveHudLabel(),
         `Mostri: ${this.monsters.length}`,
       ].join('   |   '),
     );
@@ -720,12 +761,24 @@ export class RunScene extends Phaser.Scene {
 
   private buildStatusText(): string {
     if (this.isRunComplete && this.completionState === 'extracted') {
+      const extractionOptions = this.currentDepth < MAX_DUNGEON_DEPTH
+        ? 'C continua in un livello piu difficile'
+        : 'B torna alla base e chiude la spedizione';
+
       return [
         'ESTRAZIONE RIUSCITA',
-        'C continua in un livello piu difficile',
+        extractionOptions,
         'B torna alla base e deposita la run',
         '',
         'Se torni alla base, tutti gli oggetti portati vengono messi nella stash.',
+      ].join('\n');
+    }
+
+    if (this.isRunComplete && this.completionState === 'victory') {
+      return [
+        'BOSS FINALE ABBATTUTO',
+        'L archivio collassa e la spedizione termina qui.',
+        'B torna alla base e deposita tutto nella stash',
       ].join('\n');
     }
 
@@ -747,13 +800,11 @@ export class RunScene extends Phaser.Scene {
       'F usa consumabile',
       'Q lascia oggetto',
       'TAB / 1-4 cambia slot',
-      'E estrai quando l\'uscita e attiva',
+      this.isFinalFloor ? 'Boss finale: sconfiggilo per chiudere la spedizione' : 'E estrai quando l\'uscita e attiva',
       'R torna alla base subito',
       '',
       'PROGRESSIONE',
       `LVL ${this.currentLevel}   EXP ${this.currentXp}/${this.xpToNextLevel}`,
-      `Rigenerazione passiva: +1 HP ogni ${PASSIVE_REGEN_INTERVAL} turni fuori dal combat`,
-      '',
       'DETTAGLIO SLOT',
       selectedItem ? getItemAsciiLabel(selectedItem) : '...  (vuoto)',
       selectedItem ? selectedItem.description : 'Seleziona uno slot pieno per usarlo.',
@@ -835,12 +886,10 @@ export class RunScene extends Phaser.Scene {
 
     this.turnEngine.next(logLines[0] ?? 'Azione');
     const monsterLogLines = this.runMonsterTurn();
-    const combatTriggeredThisTurn = this.didCombatHappenThisTurn(logLines, monsterLogLines);
-    const regenLogLines = this.applyPassiveRegen(combatTriggeredThisTurn);
 
     this.updatePlayerVisual();
     this.drawMap();
-    this.addLogLines([...logLines, ...monsterLogLines, ...regenLogLines]);
+    this.addLogLines([...logLines, ...monsterLogLines]);
     this.refreshHud();
   }
 
@@ -867,10 +916,10 @@ export class RunScene extends Phaser.Scene {
     if (monster.hp <= 0) {
       this.monsters = this.monsters.filter((candidate) => candidate.id !== monster.id);
       this.dropItemFromMonster(monster);
-      return [
+      return this.handleMonsterDefeat(monster, [
         `Colpisci ${monster.name} per ${damage} e lo abbatti.`,
         ...this.grantExperience(monster.expReward),
-      ];
+      ]);
     }
 
     return [`Colpisci ${monster.name} per ${damage}. Gli restano ${monster.hp} HP.`];
@@ -913,42 +962,69 @@ export class RunScene extends Phaser.Scene {
     return logLines;
   }
 
-  private applyPassiveRegen(combatTriggeredThisTurn: boolean): string[] {
-    if (this.isRunComplete || this.playerHp >= this.playerStats.maxHp) {
-      return [];
+  private handleMonsterDefeat(monster: Monster, logLines: string[]): string[] {
+    if (!monster.isBoss || monster.id !== this.bossMonsterId) {
+      return logLines;
     }
 
-    if (combatTriggeredThisTurn || !this.isOutOfCombat()) {
-      return [];
+    this.bossDefeated = true;
+    this.extractionUnlocked = !this.isFinalFloor;
+
+    if (this.isFinalFloor) {
+      this.isRunComplete = true;
+      this.completionState = 'victory';
+      return [
+        ...logLines,
+        'Il boss finale crolla. L archivio entra in lockdown.',
+        'Premi B per tornare alla stash con il bottino della spedizione.',
+      ];
     }
 
-    if (this.turnEngine.currentTurn % PASSIVE_REGEN_INTERVAL !== 0) {
-      return [];
-    }
-
-    this.playerHp = Math.min(this.playerStats.maxHp, this.playerHp + 1);
-    return ['Rigenerazione passiva: recuperi 1 HP.'];
+    return [
+      ...logLines,
+      'Il boss del piano e caduto.',
+      'L estrazione ora e aperta: raggiungila e premi E per decidere se proseguire o rientrare.',
+    ];
   }
 
-  private isOutOfCombat(): boolean {
-    return this.monsters.every((monster) => {
-      const distanceToPlayer =
-        Math.abs(monster.position.x - this.player.x) + Math.abs(monster.position.y - this.player.y);
-
-      return distanceToPlayer > monster.alertRange;
-    });
-  }
-
-  private didCombatHappenThisTurn(playerLogLines: string[], monsterLogLines: string[]): boolean {
-    if (monsterLogLines.length > 0) {
-      return true;
+  private getObjectiveHudLabel(): string {
+    if (this.isFinalFloor) {
+      return `Boss finale: ${this.bossDefeated ? 'ABBATTUTO' : 'ATTIVO'}`;
     }
 
-    return playerLogLines.some((line) =>
-      line.startsWith('Colpisci') ||
-      line.startsWith('Attivi ') ||
-      line.includes('LEVEL UP ->'),
-    );
+    if (this.isBossFloor) {
+      return `Boss: ${this.bossDefeated ? 'ABBATTUTO' : 'ATTIVO'}`;
+    }
+
+    return `Reperto: ${this.objectiveCollected ? 'RECUPERATO' : 'MANCANTE'}`;
+  }
+
+  private getDepthIntroLine(): string {
+    if (this.isFinalFloor) {
+      return 'Ultimo piano: il sovrintendente ti aspetta e non esiste un livello successivo.';
+    }
+
+    if (this.isBossFloor) {
+      return 'Questo e un piano di boss. Per chiuderlo devi abbattere il custode.';
+    }
+
+    if (this.currentDepth === 1) {
+      return 'Recupera il reperto, saccheggia e valuta se approfondire o rientrare.';
+    }
+
+    return 'Il dungeon si espande. Nemici e corridoi diventano piu letali.';
+  }
+
+  private getDepthObjectiveLine(): string {
+    if (this.isFinalFloor) {
+      return 'Sconfiggi il boss finale e sarai costretto a rientrare alla stash.';
+    }
+
+    if (this.isBossFloor) {
+      return 'Finche il boss resta vivo, l estrazione del piano rimane sigillata.';
+    }
+
+    return 'Trova il reperto per aprire l uscita di estrazione.';
   }
 
   private runMonsterTurn(): string[] {

@@ -1,6 +1,8 @@
 import type { Point, TileGrid } from '../world/DungeonGenerator';
 
-export type MonsterKind = 'rat' | 'sentry';
+export const MAX_DUNGEON_DEPTH = 12;
+
+export type MonsterKind = 'rat' | 'sentry' | 'warden' | 'overseer';
 
 export type Monster = {
   id: string;
@@ -15,6 +17,7 @@ export type Monster = {
   color: number;
   alertRange: number;
   expReward: number;
+  isBoss: boolean;
 };
 
 const randomBetween = (min: number, max: number): number =>
@@ -23,6 +26,42 @@ const randomBetween = (min: number, max: number): number =>
 const createMonster = (kind: MonsterKind, position: Point, index: number, depth: number): Monster => {
   const bonusHp = Math.max(0, depth - 1);
   const bonusDamage = Math.floor((depth - 1) / 2);
+
+  if (kind === 'overseer') {
+    return {
+      id: `overseer-${index}`,
+      kind,
+      name: 'sovrintendente dell archivio',
+      glyph: 'X',
+      position,
+      hp: 34 + bonusHp * 4,
+      maxHp: 34 + bonusHp * 4,
+      damageMin: 5 + bonusDamage,
+      damageMax: 8 + bonusDamage,
+      color: 0xff7a5c,
+      alertRange: 12,
+      expReward: 40 + depth * 4,
+      isBoss: true,
+    };
+  }
+
+  if (kind === 'warden') {
+    return {
+      id: `warden-${index}`,
+      kind,
+      name: 'custode d elite',
+      glyph: 'B',
+      position,
+      hp: 18 + bonusHp * 3,
+      maxHp: 18 + bonusHp * 3,
+      damageMin: 3 + bonusDamage,
+      damageMax: 6 + bonusDamage,
+      color: 0xff9e57,
+      alertRange: 9 + Math.min(depth - 1, 3),
+      expReward: 18 + depth * 3,
+      isBoss: true,
+    };
+  }
 
   if (kind === 'sentry') {
     return {
@@ -38,6 +77,7 @@ const createMonster = (kind: MonsterKind, position: Point, index: number, depth:
       color: 0xc75c5c,
       alertRange: 7 + Math.min(depth - 1, 2),
       expReward: 10 + Math.max(0, depth - 1) * 2,
+      isBoss: false,
     };
   }
 
@@ -54,6 +94,7 @@ const createMonster = (kind: MonsterKind, position: Point, index: number, depth:
     color: 0xa3aab7,
     alertRange: 5 + Math.min(depth - 1, 2),
     expReward: 6 + Math.max(0, depth - 1),
+    isBoss: false,
   };
 };
 
@@ -69,6 +110,10 @@ const shuffle = <T>(items: T[]): T[] => {
 };
 
 export const rollDamage = (min: number, max: number): number => randomBetween(min, max);
+
+export const isBossDepth = (depth: number): boolean => depth > 0 && depth % 3 === 0;
+
+export const isFinalDepth = (depth: number): boolean => depth === MAX_DUNGEON_DEPTH;
 
 export const isAdjacent = (a: Point, b: Point): boolean =>
   Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
@@ -96,14 +141,37 @@ export const getMonsterSpawnPoints = (tiles: TileGrid, reserved: Point[]): Point
 };
 
 export const spawnMonsters = (tiles: TileGrid, reserved: Point[], depth = 1): Monster[] => {
-  const spawnPoints = shuffle(getMonsterSpawnPoints(tiles, reserved));
+  const availableSpawnPoints = getMonsterSpawnPoints(tiles, reserved);
+  const spawnPoints = shuffle(availableSpawnPoints);
   const desiredCount = Math.min(10, Math.max(3, Math.floor(spawnPoints.length / 18) + depth - 1));
   const monsters: Monster[] = [];
+  const playerStart = reserved[0];
 
-  for (let index = 0; index < desiredCount && index < spawnPoints.length; index += 1) {
+  if (isBossDepth(depth) && playerStart && availableSpawnPoints.length > 0) {
+    let bossSpawnIndex = 0;
+    let bestDistance = -1;
+
+    for (let index = 0; index < availableSpawnPoints.length; index += 1) {
+      const candidate = availableSpawnPoints[index];
+      const distance = Math.abs(candidate.x - playerStart.x) + Math.abs(candidate.y - playerStart.y);
+
+      if (distance > bestDistance) {
+        bestDistance = distance;
+        bossSpawnIndex = index;
+      }
+    }
+
+    const [bossSpawn] = availableSpawnPoints.splice(bossSpawnIndex, 1);
+    const bossKind: MonsterKind = isFinalDepth(depth) ? 'overseer' : 'warden';
+    monsters.push(createMonster(bossKind, bossSpawn, 0, depth));
+  }
+
+  const remainingSpawnPoints = shuffle(availableSpawnPoints);
+
+  for (let index = 0; index < desiredCount && index < remainingSpawnPoints.length; index += 1) {
     const kindThreshold = Math.max(0.35, 0.65 - (depth - 1) * 0.08);
     const kind: MonsterKind = Math.random() > kindThreshold ? 'sentry' : 'rat';
-    monsters.push(createMonster(kind, spawnPoints[index], index, depth));
+    monsters.push(createMonster(kind, remainingSpawnPoints[index], monsters.length, depth));
   }
 
   return monsters;

@@ -15,6 +15,16 @@ const MONSTER_ASCII_ART = {
         ' <|MM|> ',
         '  /  \\\\  ',
     ].join('\n'),
+    warden: [
+        '  /==\\\\  ',
+        ' <|BB|> ',
+        '  /||\\\\  ',
+    ].join('\n'),
+    overseer: [
+        '  /XX\\\\  ',
+        ' <|##|> ',
+        '  /||\\\\  ',
+    ].join('\n'),
 };
 const ITEM_ASCII_ART = {
     medkit: [

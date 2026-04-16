@@ -20,6 +20,16 @@ const MONSTER_ASCII_ART: Record<MonsterKind, string> = {
     ' <|MM|> ',
     '  /  \\\\  ',
   ].join('\n'),
+  warden: [
+    '  /==\\\\  ',
+    ' <|BB|> ',
+    '  /||\\\\  ',
+  ].join('\n'),
+  overseer: [
+    '  /XX\\\\  ',
+    ' <|##|> ',
+    '  /||\\\\  ',
+  ].join('\n'),
 };
 
 const ITEM_ASCII_ART: Record<ItemKind, string> = {
