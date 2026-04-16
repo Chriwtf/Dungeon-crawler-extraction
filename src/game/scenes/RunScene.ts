@@ -9,6 +9,8 @@ import {
   type Monster,
 } from '../combat/monsters';
 import { TurnEngine } from '../core/TurnEngine';
+import { applyItemEffect } from '../items/itemEffects';
+import { rollMonsterDrop, spawnGroundItems, type GroundItem, type Item } from '../items/inventory';
 import {
   generateDungeon,
   MAP_HEIGHT,
@@ -21,18 +23,31 @@ import {
 
 const OFFSET_X = 40;
 const OFFSET_Y = 60;
+const INVENTORY_SIZE = 4;
+const MAP_PIXEL_WIDTH = MAP_WIDTH * TILE_SIZE;
+const SIDEBAR_X = OFFSET_X + MAP_PIXEL_WIDTH + 36;
+const PANEL_WIDTH = 320;
 
 export class RunScene extends Phaser.Scene {
   private tiles: TileGrid = [];
   private player!: Point;
   private monsters: Monster[] = [];
+  private groundItems: GroundItem[] = [];
+  private inventory: Array<Item | null> = Array(INVENTORY_SIZE).fill(null);
+  private selectedSlot = 0;
   private objectiveCollected = false;
   private extractionUnlocked = false;
   private turnEngine = new TurnEngine();
   private mapGraphics!: Phaser.GameObjects.Graphics;
+  private uiGraphics!: Phaser.GameObjects.Graphics;
   private playerRect!: Phaser.GameObjects.Rectangle;
   private hudText!: Phaser.GameObjects.Text;
+  private logTitleText!: Phaser.GameObjects.Text;
+  private inventoryTitleText!: Phaser.GameObjects.Text;
+  private statusTitleText!: Phaser.GameObjects.Text;
   private logText!: Phaser.GameObjects.Text;
+  private inventoryText!: Phaser.GameObjects.Text;
+  private statusText!: Phaser.GameObjects.Text;
   private logLines: string[] = [];
   private playerHp = 12;
   private readonly playerMaxHp = 12;
@@ -45,6 +60,7 @@ export class RunScene extends Phaser.Scene {
   create(): void {
     this.cameras.main.setBackgroundColor('#050608');
     this.mapGraphics = this.add.graphics();
+    this.uiGraphics = this.add.graphics();
 
     this.hudText = this.add.text(40, 16, '', {
       fontFamily: 'monospace',
@@ -52,11 +68,43 @@ export class RunScene extends Phaser.Scene {
       color: '#d8e0ea',
     });
 
-    this.logText = this.add.text(GAME_WIDTH - 270, 60, '', {
+    this.logTitleText = this.add.text(SIDEBAR_X + 16, 61, 'LOG EVENTI', {
       fontFamily: 'monospace',
-      fontSize: '16px',
+      fontSize: '15px',
+      color: '#d8e0ea',
+    });
+
+    this.inventoryTitleText = this.add.text(SIDEBAR_X + 16, 309, 'STATO E INVENTARIO', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      color: '#d8e0ea',
+    });
+
+    this.statusTitleText = this.add.text(SIDEBAR_X + 16, 549, 'COMANDI E DETTAGLI', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      color: '#d8e0ea',
+    });
+
+    this.logText = this.add.text(SIDEBAR_X + 18, 78, '', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
       color: '#9fb0c2',
-      wordWrap: { width: 220 },
+      wordWrap: { width: PANEL_WIDTH - 36 },
+    });
+
+    this.inventoryText = this.add.text(SIDEBAR_X + 18, 326, '', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      color: '#d8e0ea',
+      wordWrap: { width: PANEL_WIDTH - 36 },
+    });
+
+    this.statusText = this.add.text(SIDEBAR_X + 18, 560, '', {
+      fontFamily: 'monospace',
+      fontSize: '15px',
+      color: '#a9b4c2',
+      wordWrap: { width: PANEL_WIDTH - 36 },
     });
 
     this.playerRect = this.add.rectangle(0, 0, TILE_SIZE - 8, TILE_SIZE - 8, 0x8be9fd);
@@ -80,6 +128,9 @@ export class RunScene extends Phaser.Scene {
     this.tiles = dungeon.tiles;
     this.player = { ...dungeon.playerStart };
     this.monsters = spawnMonsters(this.tiles, safeSpawnArea);
+    this.groundItems = spawnGroundItems(this.tiles, safeSpawnArea);
+    this.inventory = Array(INVENTORY_SIZE).fill(null);
+    this.selectedSlot = 0;
     this.objectiveCollected = false;
     this.extractionUnlocked = false;
     this.playerHp = this.playerMaxHp;
@@ -87,8 +138,8 @@ export class RunScene extends Phaser.Scene {
     this.turnEngine = new TurnEngine();
     this.logLines = [
       'Sei entrato nell\'archivio.',
-      'Recupera il reperto (!), sopravvivi ai mostri e raggiungi l\'uscita (>).',
-      'Entra in un mostro per attaccarlo.',
+      'Raccogli oggetti, gestisci 4 slot e sopravvivi.',
+      'DCSS style: pickup a terra, inventario rapido, pressione tattica.',
     ];
 
     this.drawMap();
@@ -130,6 +181,25 @@ export class RunScene extends Phaser.Scene {
         case 'KeyE':
           this.interact();
           break;
+        case 'KeyG':
+          this.pickUpItem();
+          break;
+        case 'KeyF':
+          this.useSelectedItem();
+          break;
+        case 'KeyQ':
+          this.dropSelectedItem();
+          break;
+        case 'Tab':
+          event.preventDefault();
+          this.selectNextSlot();
+          break;
+        case 'Digit1':
+        case 'Digit2':
+        case 'Digit3':
+        case 'Digit4':
+          this.selectInventorySlot(Number(event.code.replace('Digit', '')) - 1);
+          break;
         case 'KeyR':
           this.setupRun();
           break;
@@ -167,6 +237,8 @@ export class RunScene extends Phaser.Scene {
       logLine = this.extractionUnlocked
         ? 'Sei sulla zona di estrazione. Premi E per uscire.'
         : 'L\'estrazione e sigillata. Ti manca il reperto.';
+    } else if (this.getGroundItemAt(this.player.x, this.player.y)) {
+      logLine = 'C\'e un oggetto qui. Premi G per raccoglierlo.';
     }
 
     this.resolvePlayerTurn([logLine]);
@@ -190,6 +262,102 @@ export class RunScene extends Phaser.Scene {
     this.resolvePlayerTurn(['Qui non c\'e nulla da attivare.']);
   }
 
+  private pickUpItem(): void {
+    const groundItem = this.getGroundItemAt(this.player.x, this.player.y);
+    if (!groundItem) {
+      this.addLogLines(['Non c\'e nulla da raccogliere qui.']);
+      this.refreshHud();
+      return;
+    }
+
+    const freeSlot = this.inventory.findIndex((item) => item === null);
+    if (freeSlot === -1) {
+      this.addLogLines(['Inventario pieno. Hai solo 4 slot.']);
+      this.refreshHud();
+      return;
+    }
+
+    this.inventory[freeSlot] = groundItem.item;
+    this.selectedSlot = freeSlot;
+    this.groundItems = this.groundItems.filter((entry) => entry.item.id !== groundItem.item.id);
+    this.resolvePlayerTurn([`Raccogli ${groundItem.item.name} nello slot ${freeSlot + 1}.`]);
+  }
+
+  private useSelectedItem(): void {
+    const item = this.inventory[this.selectedSlot];
+    if (!item) {
+      this.addLogLines([`Lo slot ${this.selectedSlot + 1} e vuoto.`]);
+      this.refreshHud();
+      return;
+    }
+
+    const result = applyItemEffect({
+      item,
+      playerHp: this.playerHp,
+      playerMaxHp: this.playerMaxHp,
+      playerPosition: this.player,
+      monsters: this.monsters,
+    });
+    if (!result.consumed) {
+      this.addLogLines(result.logLines);
+      this.refreshHud();
+      return;
+    }
+
+    this.playerHp = result.nextPlayerHp;
+
+    if (item.kind === 'ember-bomb') {
+      const adjacentTargets = this.monsters.filter((monster) => isAdjacent(monster.position, this.player));
+      for (const monster of adjacentTargets) {
+        monster.hp -= item.damageAmount ?? 0;
+      }
+
+      const removedMonsters = this.monsters.filter((monster) => result.removedMonsterIds.includes(monster.id));
+      this.monsters = this.monsters.filter((monster) => !result.removedMonsterIds.includes(monster.id));
+
+      for (const monster of removedMonsters) {
+        this.dropItemFromMonster(monster);
+      }
+    }
+
+    this.inventory[this.selectedSlot] = null;
+    this.resolvePlayerTurn(result.logLines);
+  }
+
+  private dropSelectedItem(): void {
+    const item = this.inventory[this.selectedSlot];
+    if (!item) {
+      this.addLogLines([`Lo slot ${this.selectedSlot + 1} e vuoto.`]);
+      this.refreshHud();
+      return;
+    }
+
+    if (this.getGroundItemAt(this.player.x, this.player.y)) {
+      this.addLogLines(['C\'e gia un oggetto a terra su questa casella.']);
+      this.refreshHud();
+      return;
+    }
+
+    this.inventory[this.selectedSlot] = null;
+    this.groundItems.push({
+      item,
+      position: { ...this.player },
+    });
+    this.resolvePlayerTurn([`Lasci ${item.name} a terra.`]);
+  }
+
+  private selectNextSlot(): void {
+    this.selectedSlot = (this.selectedSlot + 1) % INVENTORY_SIZE;
+    this.addLogLines([`Slot attivo: ${this.selectedSlot + 1}.`]);
+    this.refreshHud();
+  }
+
+  private selectInventorySlot(slotIndex: number): void {
+    this.selectedSlot = slotIndex;
+    this.addLogLines([`Slot attivo: ${this.selectedSlot + 1}.`]);
+    this.refreshHud();
+  }
+
   private isWalkable(x: number, y: number): boolean {
     if (x < 0 || y < 0 || x >= MAP_WIDTH || y >= MAP_HEIGHT) {
       return false;
@@ -200,6 +368,22 @@ export class RunScene extends Phaser.Scene {
 
   private drawMap(): void {
     this.mapGraphics.clear();
+    this.uiGraphics.clear();
+
+    this.uiGraphics.fillStyle(0x0f141b, 0.95);
+    this.uiGraphics.fillRoundedRect(SIDEBAR_X, 56, PANEL_WIDTH, 228, 10);
+    this.uiGraphics.fillRoundedRect(SIDEBAR_X, 304, PANEL_WIDTH, 232, 10);
+    this.uiGraphics.fillRoundedRect(SIDEBAR_X, 544, PANEL_WIDTH, 132, 10);
+
+    this.uiGraphics.lineStyle(1, 0x2b3440, 1);
+    this.uiGraphics.strokeRoundedRect(SIDEBAR_X, 56, PANEL_WIDTH, 228, 10);
+    this.uiGraphics.strokeRoundedRect(SIDEBAR_X, 304, PANEL_WIDTH, 232, 10);
+    this.uiGraphics.strokeRoundedRect(SIDEBAR_X, 544, PANEL_WIDTH, 132, 10);
+
+    this.uiGraphics.fillStyle(0x18202b, 1);
+    this.uiGraphics.fillRoundedRect(SIDEBAR_X, 56, PANEL_WIDTH, 28, 10);
+    this.uiGraphics.fillRoundedRect(SIDEBAR_X, 304, PANEL_WIDTH, 28, 10);
+    this.uiGraphics.fillRoundedRect(SIDEBAR_X, 544, PANEL_WIDTH, 28, 10);
 
     for (let y = 0; y < MAP_HEIGHT; y += 1) {
       for (let x = 0; x < MAP_WIDTH; x += 1) {
@@ -214,6 +398,15 @@ export class RunScene extends Phaser.Scene {
           TILE_SIZE - 1,
         );
       }
+    }
+
+    for (const groundItem of this.groundItems) {
+      this.mapGraphics.fillStyle(groundItem.item.color, 1);
+      this.mapGraphics.fillCircle(
+        OFFSET_X + groundItem.position.x * TILE_SIZE + TILE_SIZE / 2,
+        OFFSET_Y + groundItem.position.y * TILE_SIZE + TILE_SIZE / 2,
+        5,
+      );
     }
 
     for (const monster of this.monsters) {
@@ -268,11 +461,45 @@ export class RunScene extends Phaser.Scene {
       ].join('   |   '),
     );
 
+    this.inventoryText.setText(this.buildInventoryText());
+    this.statusText.setText(this.buildStatusText());
     this.updateLog();
   }
 
   private updateLog(): void {
-    this.logText.setText(['LOG', '', ...this.logLines].join('\n'));
+    this.logText.setText(this.logLines.join('\n'));
+  }
+
+  private buildInventoryText(): string {
+    const lines = [`Vita: ${this.playerHp}/${this.playerMaxHp}`, '', 'INVENTARIO'];
+
+    for (let index = 0; index < INVENTORY_SIZE; index += 1) {
+      const item = this.inventory[index];
+      const marker = index === this.selectedSlot ? '>' : ' ';
+      lines.push(`${marker} [${index + 1}] ${item ? item.name : '(vuoto)'}`);
+    }
+
+    const groundItem = this.getGroundItemAt(this.player.x, this.player.y);
+    lines.push('');
+    lines.push('A TERRA');
+    lines.push(groundItem ? `${groundItem.item.name}` : '(nulla)');
+
+    return lines.join('\n');
+  }
+
+  private buildStatusText(): string {
+    const selectedItem = this.inventory[this.selectedSlot];
+
+    return [
+      'G raccogli',
+      'F usa slot attivo',
+      'Q lascia a terra',
+      'TAB o 1-4 cambia slot',
+      '',
+      'DETTAGLIO SLOT',
+      selectedItem ? `${selectedItem.name}` : '(vuoto)',
+      selectedItem ? selectedItem.description : 'Seleziona uno slot pieno per usarlo.',
+    ].join('\n');
   }
 
   private resolvePlayerTurn(logLines: string[]): void {
@@ -294,11 +521,15 @@ export class RunScene extends Phaser.Scene {
       this.logLines.unshift(lines[index]);
     }
 
-    this.logLines = this.logLines.slice(0, 10);
+    this.logLines = this.logLines.slice(0, 8);
   }
 
   private getMonsterAt(x: number, y: number): Monster | undefined {
     return this.monsters.find((monster) => monster.position.x === x && monster.position.y === y);
+  }
+
+  private getGroundItemAt(x: number, y: number): GroundItem | undefined {
+    return this.groundItems.find((entry) => entry.position.x === x && entry.position.y === y);
   }
 
   private attackMonster(monster: Monster): string[] {
@@ -307,10 +538,30 @@ export class RunScene extends Phaser.Scene {
 
     if (monster.hp <= 0) {
       this.monsters = this.monsters.filter((candidate) => candidate.id !== monster.id);
+      this.dropItemFromMonster(monster);
       return [`Colpisci ${monster.name} per ${damage} e lo abbatti.`];
     }
 
     return [`Colpisci ${monster.name} per ${damage}. Gli restano ${monster.hp} HP.`];
+  }
+
+  private dropItemFromMonster(monster: Monster): void {
+    const droppedItem = rollMonsterDrop();
+    if (!droppedItem) {
+      return;
+    }
+
+    const occupied = this.getGroundItemAt(monster.position.x, monster.position.y);
+    if (occupied) {
+      return;
+    }
+
+    this.groundItems.push({
+      item: droppedItem,
+      position: { ...monster.position },
+    });
+
+    this.addLogLines([`${monster.name} lascia ${droppedItem.name}.`]);
   }
 
   private runMonsterTurn(): string[] {

@@ -2,8 +2,8 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { RunScene } from './scenes/RunScene';
-export const GAME_WIDTH = 960;
-export const GAME_HEIGHT = 640;
+export const GAME_WIDTH = 1240;
+export const GAME_HEIGHT = 720;
 export const gameConfig = {
     type: Phaser.AUTO,
     parent: 'app',
