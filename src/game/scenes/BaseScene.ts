@@ -172,10 +172,29 @@ export class BaseScene extends Phaser.Scene {
     });
   }
 
+  private getEquippedBackpack(): Item | null {
+    return this.loadout.find((item) => item?.category === 'backpack') ?? null;
+  }
+
+  private formatLoadoutItemLabel(item: Item | null): string {
+    if (!item) {
+      return '(vuoto)';
+    }
+
+    if (item.category === 'backpack') {
+      return `${item.name} [zaino]`;
+    }
+
+    return item.name;
+  }
+
   private refreshTexts(): void {
+    const equippedBackpack = this.getEquippedBackpack();
+
     this.helpText.setText([
       'W/S scorri stash   1-4 scegli slot loadout',
       'E equipaggia   Q rimetti in stash   SPACE avvia run   ESC torna al menu',
+      `Zaino run: ${equippedBackpack ? equippedBackpack.name : '(nessuno)'}`,
       'Gli oggetti caricati escono dalla stash e vengono persi se muori nella spedizione.',
     ].join('\n'));
 
@@ -190,7 +209,7 @@ export class BaseScene extends Phaser.Scene {
 
     const loadoutLines = this.loadout.map((item, index) => {
       const marker = index === this.selectedSlot ? '[>]' : '[ ]';
-      return `${marker} SLOT ${index + 1}  ${item ? item.name : '(vuoto)'}`;
+      return `${marker} SLOT ${index + 1}  ${this.formatLoadoutItemLabel(item)}`;
     });
     this.loadoutText.setText(loadoutLines.join('\n'));
 
@@ -202,9 +221,11 @@ export class BaseScene extends Phaser.Scene {
     this.detailText.setText([
       `Slot attivo: ${this.selectedSlot + 1}`,
       selectedStashItem ? `Riga stash: ${getItemAsciiLabel(selectedStashItem)}` : 'Riga stash: (vuota)',
+      `Zaino run: ${equippedBackpack ? getItemAsciiLabel(equippedBackpack) : '(nessuno)'}`,
       '',
       detailItem ? detailItem.description : 'Nessun oggetto selezionato.',
       '',
+      'Gli zaini partono comunque nello slot zaino dedicato della run.',
       'Premendo SPACE la run parte con il loadout mostrato sopra.',
     ].join('\n'));
   }

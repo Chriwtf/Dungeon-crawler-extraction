@@ -88,6 +88,21 @@ export const equipLoadoutItem = (stashIndex: number, slotIndex: number): MetaSta
   const [equippedItem] = nextStash.splice(stashIndex, 1);
   const nextLoadout = [...state.loadout];
   const replacedItem = nextLoadout[slotIndex];
+
+  if (equippedItem.category === 'backpack') {
+    const existingBackpackIndex = nextLoadout.findIndex(
+      (item, index) => index !== slotIndex && item?.category === 'backpack',
+    );
+
+    if (existingBackpackIndex !== -1) {
+      const existingBackpack = nextLoadout[existingBackpackIndex];
+      nextLoadout[existingBackpackIndex] = null;
+      if (existingBackpack) {
+        nextStash.push(existingBackpack);
+      }
+    }
+  }
+
   nextLoadout[slotIndex] = equippedItem;
 
   if (replacedItem) {
@@ -118,11 +133,15 @@ export const unequipLoadoutItem = (slotIndex: number): MetaState => {
   return nextState;
 };
 
-export const depositInventoryToStash = (inventory: Array<Item | null>): MetaState => {
+export const depositInventoryToStash = (
+  inventory: Array<Item | null>,
+  backpack: Item | null = null,
+): MetaState => {
   const state = loadMetaState();
   const depositedItems = inventory.filter((item): item is Item => item !== null).map(cloneItem);
+  const depositedBackpack = backpack ? [cloneItem(backpack)] : [];
   const nextState = {
-    stash: [...state.stash, ...depositedItems],
+    stash: [...state.stash, ...depositedItems, ...depositedBackpack],
     loadout: Array(LOADOUT_SIZE).fill(null),
   };
 
