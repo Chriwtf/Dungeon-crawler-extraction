@@ -23,13 +23,23 @@ const INVENTORY_PANEL_HEIGHT = 238;
 const DETAILS_PANEL_Y = INVENTORY_PANEL_Y + INVENTORY_PANEL_HEIGHT + PANEL_GAP;
 const DETAILS_PANEL_HEIGHT = 180;
 const PANEL_HEADER_HEIGHT = 30;
+const PANEL_BODY_X = SIDEBAR_X + 18;
+const PANEL_BODY_WIDTH = PANEL_WIDTH - 36;
+const LOG_BODY_Y = LOG_PANEL_Y + PANEL_HEADER_HEIGHT + 12;
+const LOG_BODY_HEIGHT = LOG_PANEL_HEIGHT - PANEL_HEADER_HEIGHT - 26;
+const INVENTORY_BODY_Y = INVENTORY_PANEL_Y + PANEL_HEADER_HEIGHT + 12;
+const INVENTORY_BODY_HEIGHT = INVENTORY_PANEL_HEIGHT - PANEL_HEADER_HEIGHT - 26;
 const DETAILS_BODY_X = SIDEBAR_X + 18;
 const DETAILS_BODY_Y = DETAILS_PANEL_Y + PANEL_HEADER_HEIGHT + 12;
 const DETAILS_BODY_WIDTH = PANEL_WIDTH - 36;
+const DETAILS_BODY_HEIGHT = DETAILS_PANEL_HEIGHT - PANEL_HEADER_HEIGHT - 26;
 const DETAILS_LEFT_WIDTH = 168;
 const DETAILS_COLUMN_GAP = 12;
 const DETAILS_PREVIEW_X = DETAILS_BODY_X + DETAILS_LEFT_WIDTH + DETAILS_COLUMN_GAP + 72;
 const DETAILS_FOOTER_Y = DETAILS_BODY_Y + 88;
+const DETAILS_FOOTER_HEIGHT = DETAILS_BODY_HEIGHT - (DETAILS_FOOTER_Y - DETAILS_BODY_Y);
+const MAX_LOG_HISTORY = 200;
+const PANEL_SCROLL_STEP = 28;
 export class RunScene extends Phaser.Scene {
     constructor() {
         super('run');
@@ -147,6 +157,12 @@ export class RunScene extends Phaser.Scene {
             writable: true,
             value: []
         });
+        Object.defineProperty(this, "panelMaskGraphics", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: []
+        });
         Object.defineProperty(this, "hudText", {
             enumerable: true,
             configurable: true,
@@ -206,6 +222,24 @@ export class RunScene extends Phaser.Scene {
             configurable: true,
             writable: true,
             value: []
+        });
+        Object.defineProperty(this, "logScrollOffset", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 0
+        });
+        Object.defineProperty(this, "statusDetailScrollOffset", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 0
+        });
+        Object.defineProperty(this, "lastStatusDetailContent", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: ''
         });
         Object.defineProperty(this, "playerHp", {
             enumerable: true,
@@ -304,29 +338,33 @@ export class RunScene extends Phaser.Scene {
             ...createTextStyle('17px', matrixPalette.text),
         });
         applyTextGlow(this.hudText, matrixPalette.accent, 8);
-        this.logTitleText = this.add.text(SIDEBAR_X + 16, 61, 'SYS LOG', createTextStyle('15px', matrixPalette.text));
+        this.logTitleText = this.add.text(SIDEBAR_X + 16, 61, 'SYS LOG // WHEEL', createTextStyle('15px', matrixPalette.text));
         this.inventoryTitleText = this.add.text(SIDEBAR_X + 16, INVENTORY_PANEL_Y + 5, 'STATUS // INVENTORY', createTextStyle('15px', matrixPalette.text));
-        this.statusTitleText = this.add.text(SIDEBAR_X + 16, DETAILS_PANEL_Y + 5, 'COMMANDS // DETAIL', createTextStyle('15px', matrixPalette.text));
-        this.logText = this.add.text(SIDEBAR_X + 18, LOG_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
+        this.statusTitleText = this.add.text(SIDEBAR_X + 16, DETAILS_PANEL_Y + 5, 'COMMANDS // DETAIL // WHEEL', createTextStyle('15px', matrixPalette.text));
+        this.logText = this.add.text(PANEL_BODY_X, LOG_BODY_Y, '', {
             ...createTextStyle('13px', matrixPalette.textDim),
-            wordWrap: { width: PANEL_WIDTH - 36 },
+            wordWrap: { width: PANEL_BODY_WIDTH, useAdvancedWrap: true },
             lineSpacing: 1,
         });
-        this.inventoryText = this.add.text(SIDEBAR_X + 18, INVENTORY_PANEL_Y + PANEL_HEADER_HEIGHT + 12, '', {
+        this.constrainTextToPanel(this.logText, PANEL_BODY_X, LOG_BODY_Y, PANEL_BODY_WIDTH, LOG_BODY_HEIGHT);
+        this.inventoryText = this.add.text(PANEL_BODY_X, INVENTORY_BODY_Y, '', {
             ...createTextStyle('13px', matrixPalette.text),
-            wordWrap: { width: PANEL_WIDTH - 36 },
+            wordWrap: { width: PANEL_BODY_WIDTH, useAdvancedWrap: true },
             lineSpacing: 1,
         });
+        this.constrainTextToPanel(this.inventoryText, PANEL_BODY_X, INVENTORY_BODY_Y, PANEL_BODY_WIDTH, INVENTORY_BODY_HEIGHT);
         this.statusText = this.add.text(DETAILS_BODY_X, DETAILS_BODY_Y, '', {
             ...createTextStyle('13px', matrixPalette.textDim),
-            wordWrap: { width: DETAILS_LEFT_WIDTH },
+            wordWrap: { width: DETAILS_LEFT_WIDTH, useAdvancedWrap: true },
             lineSpacing: 2,
         });
+        this.constrainTextToPanel(this.statusText, DETAILS_BODY_X, DETAILS_BODY_Y, DETAILS_LEFT_WIDTH, 82);
         this.statusDetailText = this.add.text(DETAILS_BODY_X, DETAILS_FOOTER_Y, '', {
             ...createTextStyle('12px', matrixPalette.textDim),
-            wordWrap: { width: DETAILS_BODY_WIDTH },
+            wordWrap: { width: DETAILS_BODY_WIDTH, useAdvancedWrap: true },
             lineSpacing: 2,
         });
+        this.constrainTextToPanel(this.statusDetailText, DETAILS_BODY_X, DETAILS_FOOTER_Y, DETAILS_BODY_WIDTH, DETAILS_FOOTER_HEIGHT);
         this.asciiPreviewText = this.add.text(DETAILS_PREVIEW_X, DETAILS_BODY_Y + 8, '', {
             ...createTextStyle('15px', matrixPalette.accent, 'center'),
             lineSpacing: 6,
@@ -493,6 +531,53 @@ export class RunScene extends Phaser.Scene {
                     break;
             }
         });
+        this.input.on('wheel', (pointer, _currentlyOver, _deltaX, deltaY) => {
+            if (this.isPointerInsidePanel(pointer, PANEL_BODY_X, LOG_BODY_Y, PANEL_BODY_WIDTH, LOG_BODY_HEIGHT)) {
+                this.scrollLog(deltaY);
+                return;
+            }
+            if (this.isPointerInsidePanel(pointer, DETAILS_BODY_X, DETAILS_FOOTER_Y, DETAILS_BODY_WIDTH, DETAILS_FOOTER_HEIGHT)) {
+                this.scrollStatusDetail(deltaY);
+            }
+        });
+    }
+    constrainTextToPanel(text, x, y, width, height) {
+        text.setFixedSize(width, height);
+        text.setPadding(0, 0, 0, 0);
+        text.setMask(this.createPanelMask(x, y, width, height));
+    }
+    createPanelMask(x, y, width, height) {
+        const maskShape = this.make.graphics({});
+        maskShape.fillStyle(0xffffff, 1);
+        maskShape.fillRect(x, y, width, height);
+        maskShape.setVisible(false);
+        this.panelMaskGraphics.push(maskShape);
+        return maskShape.createGeometryMask();
+    }
+    isPointerInsidePanel(pointer, x, y, width, height) {
+        return Phaser.Geom.Rectangle.Contains(new Phaser.Geom.Rectangle(x, y, width, height), pointer.x, pointer.y);
+    }
+    syncLogScroll() {
+        this.logScrollOffset = Phaser.Math.Clamp(this.logScrollOffset, 0, this.getMaxScroll(this.logText, LOG_BODY_HEIGHT));
+        this.logText.setY(LOG_BODY_Y - this.logScrollOffset);
+    }
+    syncStatusDetailScroll() {
+        this.statusDetailScrollOffset = Phaser.Math.Clamp(this.statusDetailScrollOffset, 0, this.getMaxScroll(this.statusDetailText, DETAILS_FOOTER_HEIGHT));
+        this.statusDetailText.setY(DETAILS_FOOTER_Y - this.statusDetailScrollOffset);
+    }
+    getMaxScroll(text, viewportHeight) {
+        return Math.max(0, text.height - viewportHeight);
+    }
+    isLogNearBottom() {
+        return this.logScrollOffset >= this.getMaxScroll(this.logText, LOG_BODY_HEIGHT) - 4;
+    }
+    scrollLog(deltaY) {
+        this.logScrollOffset += deltaY > 0 ? PANEL_SCROLL_STEP : -PANEL_SCROLL_STEP;
+        this.syncLogScroll();
+    }
+    scrollStatusDetail(deltaY) {
+        this.statusDetailScrollOffset += deltaY > 0 ? PANEL_SCROLL_STEP : -PANEL_SCROLL_STEP;
+        this.syncStatusDetailScroll();
     }
     handleRunCompleteInput(code) {
         if (this.completionState === 'extracted') {
@@ -800,12 +885,20 @@ export class RunScene extends Phaser.Scene {
         ].join('   |   '));
         this.inventoryText.setText(this.buildInventoryText());
         this.statusText.setText(this.buildStatusText());
-        this.statusDetailText.setText(this.buildStatusDetailText());
+        const nextStatusDetail = this.buildStatusDetailText();
+        const hasStatusDetailChanged = nextStatusDetail !== this.lastStatusDetailContent;
+        this.lastStatusDetailContent = nextStatusDetail;
+        this.statusDetailText.setText(nextStatusDetail);
+        if (hasStatusDetailChanged) {
+            this.statusDetailScrollOffset = 0;
+        }
+        this.syncStatusDetailScroll();
         this.asciiPreviewText.setText(this.buildAsciiPreviewText());
         this.updateLog();
     }
     updateLog() {
         this.logText.setText(this.logLines.join('\n'));
+        this.syncLogScroll();
     }
     buildInventoryText() {
         const lines = [
@@ -961,10 +1054,16 @@ export class RunScene extends Phaser.Scene {
         this.refreshHud();
     }
     addLogLines(lines) {
-        for (let index = lines.length - 1; index >= 0; index -= 1) {
-            this.logLines.unshift(lines[index]);
+        const shouldStickToBottom = this.isLogNearBottom();
+        this.logLines.push(...lines);
+        if (this.logLines.length > MAX_LOG_HISTORY) {
+            this.logLines = this.logLines.slice(this.logLines.length - MAX_LOG_HISTORY);
         }
-        this.logLines = this.logLines.slice(0, 6);
+        this.logText.setText(this.logLines.join('\n'));
+        if (shouldStickToBottom) {
+            this.logScrollOffset = this.getMaxScroll(this.logText, LOG_BODY_HEIGHT);
+        }
+        this.syncLogScroll();
     }
     getMonsterAt(x, y) {
         return this.monsters.find((monster) => monster.position.x === x && monster.position.y === y);
