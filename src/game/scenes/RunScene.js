@@ -8,6 +8,7 @@ import { BASE_PLAYER_STATS, derivePlayerStats } from '../items/playerStats';
 import { depositInventoryToStash } from '../state/metaProgression';
 import { createDungeonConfigForDepth, generateDungeon, } from '../world/DungeonGenerator';
 import { applyTextGlow, createTextStyle, drawBackdrop, drawScanlines, drawScreenFrame, drawTerminalPanel, matrixPalette, } from '../ui/matrixTheme';
+import { getItemAsciiArt, getItemAsciiLabel, getMonsterAsciiArt, PLAYER_ASCII_ART, PLAYER_GLYPH, } from '../ui/asciiModels';
 const INVENTORY_SIZE = 4;
 const MAP_AREA_X = 40;
 const MAP_AREA_Y = 56;
@@ -110,6 +111,12 @@ export class RunScene extends Phaser.Scene {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "mapGlyphTexts", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: []
+        });
         Object.defineProperty(this, "hudText", {
             enumerable: true,
             configurable: true,
@@ -147,6 +154,12 @@ export class RunScene extends Phaser.Scene {
             value: void 0
         });
         Object.defineProperty(this, "statusText", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "asciiPreviewText", {
             enumerable: true,
             configurable: true,
             writable: true,
@@ -255,7 +268,12 @@ export class RunScene extends Phaser.Scene {
             wordWrap: { width: PANEL_WIDTH - 36 },
             lineSpacing: 1,
         });
-        this.playerRect = this.add.rectangle(0, 0, this.tileSize - 8, this.tileSize - 8, 0x7dff9b);
+        this.asciiPreviewText = this.add.text(SIDEBAR_X + 182, DETAILS_PANEL_Y + PANEL_HEADER_HEIGHT + 22, '', {
+            ...createTextStyle('15px', matrixPalette.accent, 'center'),
+            lineSpacing: 6,
+        }).setOrigin(0.5, 0);
+        applyTextGlow(this.asciiPreviewText, matrixPalette.accent, 10);
+        this.playerRect = this.add.rectangle(0, 0, this.tileSize - 8, this.tileSize - 8, 0x7dff9b, 0.16);
         this.playerRect.setStrokeStyle(1, 0xc8ffd7, 0.7);
         this.setupRun({
             depth: this.currentDepth,
@@ -547,6 +565,7 @@ export class RunScene extends Phaser.Scene {
     drawMap() {
         this.mapGraphics.clear();
         this.uiGraphics.clear();
+        this.clearMapGlyphs();
         this.uiGraphics.fillStyle(0x08130f, 0.42);
         this.uiGraphics.fillRoundedRect(MAP_AREA_X - 18, MAP_AREA_Y - 18, MAP_AREA_WIDTH + 36, MAP_AREA_HEIGHT + 36, 14);
         this.uiGraphics.lineStyle(2, 0x2a7a4b, 0.5);
@@ -592,13 +611,27 @@ export class RunScene extends Phaser.Scene {
             this.mapGraphics.fillCircle(this.mapOriginX + groundItem.position.x * this.tileSize + this.tileSize / 2, this.mapOriginY + groundItem.position.y * this.tileSize + this.tileSize / 2, Math.max(4, Math.floor(this.tileSize * 0.22)));
             this.mapGraphics.lineStyle(1, 0xc8ffd7, 0.35);
             this.mapGraphics.strokeCircle(this.mapOriginX + groundItem.position.x * this.tileSize + this.tileSize / 2, this.mapOriginY + groundItem.position.y * this.tileSize + this.tileSize / 2, Math.max(6, Math.floor(this.tileSize * 0.28)));
+            this.addMapGlyph(groundItem.position.x, groundItem.position.y, groundItem.item.glyph, `#${groundItem.item.color.toString(16).padStart(6, '0')}`, 0.92);
         }
         for (const monster of this.monsters) {
             this.mapGraphics.fillStyle(monster.color, 1);
             this.mapGraphics.fillRect(this.mapOriginX + monster.position.x * this.tileSize + 4, this.mapOriginY + monster.position.y * this.tileSize + 4, this.tileSize - 8, this.tileSize - 8);
             this.mapGraphics.lineStyle(1, 0x020604, 0.7);
             this.mapGraphics.strokeRect(this.mapOriginX + monster.position.x * this.tileSize + 4, this.mapOriginY + monster.position.y * this.tileSize + 4, this.tileSize - 8, this.tileSize - 8);
+            this.addMapGlyph(monster.position.x, monster.position.y, monster.glyph, `#${monster.color.toString(16).padStart(6, '0')}`);
         }
+        for (let y = 0; y < this.mapHeight; y += 1) {
+            for (let x = 0; x < this.mapWidth; x += 1) {
+                const tile = this.tiles[y][x];
+                if (tile === 'objective') {
+                    this.addMapGlyph(x, y, '!', matrixPalette.warning, 0.88);
+                }
+                else if (tile === 'extraction') {
+                    this.addMapGlyph(x, y, '>', this.extractionUnlocked ? matrixPalette.danger : matrixPalette.textMuted, 0.88);
+                }
+            }
+        }
+        this.addMapGlyph(this.player.x, this.player.y, PLAYER_GLYPH, matrixPalette.accent, 1);
     }
     getTileColor(tile) {
         switch (tile) {
@@ -629,6 +662,7 @@ export class RunScene extends Phaser.Scene {
         ].join('   |   '));
         this.inventoryText.setText(this.buildInventoryText());
         this.statusText.setText(this.buildStatusText());
+        this.asciiPreviewText.setText(this.buildAsciiPreviewText());
         this.updateLog();
     }
     updateLog() {
@@ -673,6 +707,8 @@ export class RunScene extends Phaser.Scene {
             ].join('\n');
         }
         const selectedItem = this.inventory[this.selectedSlot];
+        const groundItem = this.getGroundItemAt(this.player.x, this.player.y);
+        const nearbyMonster = this.monsters.find((monster) => isAdjacent(monster.position, this.player));
         return [
             'G raccogli da terra',
             'F usa consumabile',
@@ -682,9 +718,42 @@ export class RunScene extends Phaser.Scene {
             'R torna alla base subito',
             '',
             'DETTAGLIO SLOT',
-            selectedItem ? `${selectedItem.name}` : '(vuoto)',
+            selectedItem ? getItemAsciiLabel(selectedItem) : '...  (vuoto)',
             selectedItem ? selectedItem.description : 'Seleziona uno slot pieno per usarlo.',
+            '',
+            'SEGNALI LOCALI',
+            nearbyMonster ? `${nearbyMonster.glyph}  ${nearbyMonster.name}` : groundItem ? `${groundItem.item.glyph}  ${groundItem.item.name}` : 'nessun contatto',
         ].join('\n');
+    }
+    buildAsciiPreviewText() {
+        const selectedItem = this.inventory[this.selectedSlot];
+        const nearbyMonster = this.monsters.find((monster) => isAdjacent(monster.position, this.player));
+        const groundItem = this.getGroundItemAt(this.player.x, this.player.y);
+        if (selectedItem) {
+            return getItemAsciiArt(selectedItem.kind);
+        }
+        if (nearbyMonster) {
+            return getMonsterAsciiArt(nearbyMonster.kind);
+        }
+        if (groundItem) {
+            return getItemAsciiArt(groundItem.item.kind);
+        }
+        return PLAYER_ASCII_ART;
+    }
+    addMapGlyph(x, y, glyph, color, alpha = 1) {
+        const text = this.add.text(this.mapOriginX + x * this.tileSize + this.tileSize / 2, this.mapOriginY + y * this.tileSize + this.tileSize / 2, glyph, {
+            ...createTextStyle(`${Math.max(14, Math.floor(this.tileSize * 0.72))}px`, color, 'center'),
+        });
+        text.setOrigin(0.5);
+        text.setAlpha(alpha);
+        text.setShadow(0, 0, color, 8, true, true);
+        this.mapGlyphTexts.push(text);
+    }
+    clearMapGlyphs() {
+        for (const text of this.mapGlyphTexts) {
+            text.destroy();
+        }
+        this.mapGlyphTexts = [];
     }
     getPassiveTag(item) {
         if (item.category === 'weapon') {

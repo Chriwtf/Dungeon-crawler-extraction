@@ -6,6 +6,7 @@ export type Monster = {
   id: string;
   kind: MonsterKind;
   name: string;
+  glyph: string;
   position: Point;
   hp: number;
   maxHp: number;
@@ -27,6 +28,7 @@ const createMonster = (kind: MonsterKind, position: Point, index: number, depth:
       id: `sentry-${index}`,
       kind,
       name: 'sentinella affamata',
+      glyph: 'M',
       position,
       hp: 8 + bonusHp * 2,
       maxHp: 8 + bonusHp * 2,
@@ -41,6 +43,7 @@ const createMonster = (kind: MonsterKind, position: Point, index: number, depth:
     id: `rat-${index}`,
     kind,
     name: 'ratto ferale',
+    glyph: 'r',
     position,
     hp: 4 + bonusHp,
     maxHp: 4 + bonusHp,

@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config';
 import { consumeLoadoutForRun, equipLoadoutItem, getMetaState, unequipLoadoutItem, } from '../state/metaProgression';
 import { applyTextGlow, createTextStyle, drawBackdrop, drawScanlines, drawScreenFrame, drawTerminalPanel, matrixPalette, } from '../ui/matrixTheme';
+import { getItemAsciiArt, getItemAsciiLabel } from '../ui/asciiModels';
 const LOADOUT_SIZE = 4;
 export class BaseScene extends Phaser.Scene {
     constructor() {
@@ -37,6 +38,12 @@ export class BaseScene extends Phaser.Scene {
             value: void 0
         });
         Object.defineProperty(this, "detailText", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "asciiDetailText", {
             enumerable: true,
             configurable: true,
             writable: true,
@@ -99,6 +106,11 @@ export class BaseScene extends Phaser.Scene {
             lineSpacing: 3,
             wordWrap: { width: 540 },
         });
+        this.asciiDetailText = this.add.text(1040, 448, '', {
+            ...createTextStyle('14px', matrixPalette.accent, 'center'),
+            lineSpacing: 5,
+        }).setOrigin(0.5, 0);
+        applyTextGlow(this.asciiDetailText, matrixPalette.accent, 10);
         const scanlines = this.add.graphics();
         drawScanlines(scanlines, GAME_WIDTH, GAME_HEIGHT, 4);
         this.bindInput();
@@ -194,9 +206,10 @@ export class BaseScene extends Phaser.Scene {
         const selectedStashItem = this.stash[this.stashIndex];
         const selectedLoadoutItem = this.loadout[this.selectedSlot];
         const detailItem = selectedStashItem ?? selectedLoadoutItem;
+        this.asciiDetailText.setText(detailItem ? getItemAsciiArt(detailItem.kind) : ' .-. \n( . )\n `-` ');
         this.detailText.setText([
             `Slot attivo: ${this.selectedSlot + 1}`,
-            selectedStashItem ? `Riga stash: ${selectedStashItem.name}` : 'Riga stash: (vuota)',
+            selectedStashItem ? `Riga stash: ${getItemAsciiLabel(selectedStashItem)}` : 'Riga stash: (vuota)',
             '',
             detailItem ? detailItem.description : 'Nessun oggetto selezionato.',
             '',
