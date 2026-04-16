@@ -25,6 +25,10 @@ type Room = {
   center: Point;
 };
 
+const TARGET_ROOMS = 8;
+const MIN_REQUIRED_ROOMS = 3;
+const MAX_GENERATION_ATTEMPTS = 6;
+
 const randomBetween = (min: number, max: number): number =>
   Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -62,28 +66,39 @@ const carveVerticalTunnel = (tiles: TileGrid, y1: number, y2: number, x: number)
 const intersects = (a: Room, b: Room): boolean =>
   a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
 
-export const generateDungeon = (): DungeonData => {
+const createRoom = (x: number, y: number, w: number, h: number): Room => ({
+  x,
+  y,
+  w,
+  h,
+  center: {
+    x: Math.floor(x + w / 2),
+    y: Math.floor(y + h / 2),
+  },
+});
+
+const connectRooms = (tiles: TileGrid, from: Point, to: Point): void => {
+  if (Math.random() > 0.5) {
+    carveHorizontalTunnel(tiles, from.x, to.x, from.y);
+    carveVerticalTunnel(tiles, from.y, to.y, to.x);
+    return;
+  }
+
+  carveVerticalTunnel(tiles, from.y, to.y, from.x);
+  carveHorizontalTunnel(tiles, from.x, to.x, to.y);
+};
+
+const generateRandomRooms = (): { tiles: TileGrid; rooms: Room[] } => {
   const tiles = createFilledGrid();
   const rooms: Room[] = [];
-  const maxRooms = 8;
 
-  for (let i = 0; i < maxRooms; i += 1) {
+  for (let i = 0; i < TARGET_ROOMS; i += 1) {
     const w = randomBetween(4, 8);
     const h = randomBetween(4, 7);
     const x = randomBetween(1, MAP_WIDTH - w - 2);
     const y = randomBetween(1, MAP_HEIGHT - h - 2);
 
-    const room: Room = {
-      x,
-      y,
-      w,
-      h,
-      center: {
-        x: Math.floor(x + w / 2),
-        y: Math.floor(y + h / 2),
-      },
-    };
-
+    const room = createRoom(x, y, w, h);
     const overlaps = rooms.some((existing) => intersects(room, existing));
     if (overlaps) {
       continue;
@@ -92,22 +107,49 @@ export const generateDungeon = (): DungeonData => {
     carveRoom(tiles, room);
 
     if (rooms.length > 0) {
-      const previous = rooms[rooms.length - 1].center;
-      if (Math.random() > 0.5) {
-        carveHorizontalTunnel(tiles, previous.x, room.center.x, previous.y);
-        carveVerticalTunnel(tiles, previous.y, room.center.y, room.center.x);
-      } else {
-        carveVerticalTunnel(tiles, previous.y, room.center.y, previous.x);
-        carveHorizontalTunnel(tiles, previous.x, room.center.x, room.center.y);
-      }
+      connectRooms(tiles, rooms[rooms.length - 1].center, room.center);
     }
 
     rooms.push(room);
   }
 
-  const playerStart = rooms[0]?.center ?? { x: 2, y: 2 };
-  const objective = rooms[Math.max(1, rooms.length - 2)]?.center ?? { x: MAP_WIDTH - 4, y: MAP_HEIGHT - 4 };
-  const extraction = rooms[rooms.length - 1]?.center ?? { x: MAP_WIDTH - 2, y: 2 };
+  return { tiles, rooms };
+};
+
+const generateFallbackRooms = (): { tiles: TileGrid; rooms: Room[] } => {
+  const tiles = createFilledGrid();
+  const rooms = [
+    createRoom(2, 6, 6, 6),
+    createRoom(12, 4, 7, 7),
+    createRoom(23, 8, 6, 6),
+  ];
+
+  for (const room of rooms) {
+    carveRoom(tiles, room);
+  }
+
+  connectRooms(tiles, rooms[0].center, rooms[1].center);
+  connectRooms(tiles, rooms[1].center, rooms[2].center);
+
+  return { tiles, rooms };
+};
+
+const buildDungeonLayout = (): { tiles: TileGrid; rooms: Room[] } => {
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const layout = generateRandomRooms();
+    if (layout.rooms.length >= MIN_REQUIRED_ROOMS) {
+      return layout;
+    }
+  }
+
+  return generateFallbackRooms();
+};
+
+export const generateDungeon = (): DungeonData => {
+  const { tiles, rooms } = buildDungeonLayout();
+  const playerStart = rooms[0].center;
+  const objective = rooms[rooms.length - 2].center;
+  const extraction = rooms[rooms.length - 1].center;
 
   tiles[objective.y][objective.x] = 'objective';
   tiles[extraction.y][extraction.x] = 'extraction';
