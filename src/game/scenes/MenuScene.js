@@ -17,10 +17,11 @@ export class MenuScene extends Phaser.Scene {
             'Roguelike horror a turni per browser',
             '',
             'WASD / Frecce: muovi',
+            'Entra in un mostro: attacca',
             'E: interagisci / estrai',
             'R: rigenera dungeon',
             '',
-            'Recupera il reperto (!) e raggiungi l\'uscita (>)',
+            'Recupera il reperto (!), sopravvivi e raggiungi l\'uscita (>)',
         ].join('\n'), {
             fontFamily: 'monospace',
             fontSize: '20px',

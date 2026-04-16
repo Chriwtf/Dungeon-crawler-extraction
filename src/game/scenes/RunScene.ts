@@ -1,5 +1,13 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../config';
+import {
+  getRandomNeighborSteps,
+  getStepTowardTarget,
+  isAdjacent,
+  rollDamage,
+  spawnMonsters,
+  type Monster,
+} from '../combat/monsters';
 import { TurnEngine } from '../core/TurnEngine';
 import {
   generateDungeon,
@@ -17,6 +25,7 @@ const OFFSET_Y = 60;
 export class RunScene extends Phaser.Scene {
   private tiles: TileGrid = [];
   private player!: Point;
+  private monsters: Monster[] = [];
   private objectiveCollected = false;
   private extractionUnlocked = false;
   private turnEngine = new TurnEngine();
@@ -25,6 +34,8 @@ export class RunScene extends Phaser.Scene {
   private hudText!: Phaser.GameObjects.Text;
   private logText!: Phaser.GameObjects.Text;
   private logLines: string[] = [];
+  private playerHp = 12;
+  private readonly playerMaxHp = 12;
   private isRunComplete = false;
 
   constructor() {
@@ -56,25 +67,43 @@ export class RunScene extends Phaser.Scene {
 
   private setupRun(): void {
     const dungeon = generateDungeon();
+    const safeSpawnArea = [
+      dungeon.playerStart,
+      dungeon.objective,
+      dungeon.extraction,
+      { x: dungeon.playerStart.x + 1, y: dungeon.playerStart.y },
+      { x: dungeon.playerStart.x - 1, y: dungeon.playerStart.y },
+      { x: dungeon.playerStart.x, y: dungeon.playerStart.y + 1 },
+      { x: dungeon.playerStart.x, y: dungeon.playerStart.y - 1 },
+    ];
+
     this.tiles = dungeon.tiles;
     this.player = { ...dungeon.playerStart };
+    this.monsters = spawnMonsters(this.tiles, safeSpawnArea);
     this.objectiveCollected = false;
     this.extractionUnlocked = false;
+    this.playerHp = this.playerMaxHp;
     this.isRunComplete = false;
     this.turnEngine = new TurnEngine();
     this.logLines = [
       'Sei entrato nell\'archivio.',
-      'Recupera il reperto (!) e raggiungi l\'uscita (>).',
+      'Recupera il reperto (!), sopravvivi ai mostri e raggiungi l\'uscita (>).',
+      'Entra in un mostro per attaccarlo.',
     ];
 
     this.drawMap();
     this.updatePlayerVisual();
-    this.refreshHud('Run avviata');
+    this.addLogLines(['Run avviata']);
+    this.refreshHud();
   }
 
   private bindInput(): void {
     this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
       if (this.isRunComplete) {
+        if (event.code === 'KeyR') {
+          this.setupRun();
+        }
+
         if (event.code === 'Space') {
           this.scene.start('menu');
         }
@@ -112,9 +141,16 @@ export class RunScene extends Phaser.Scene {
 
   private tryMove(dx: number, dy: number): void {
     const next = { x: this.player.x + dx, y: this.player.y + dy };
+    const targetMonster = this.getMonsterAt(next.x, next.y);
+
+    if (targetMonster) {
+      this.resolvePlayerTurn(this.attackMonster(targetMonster));
+      return;
+    }
 
     if (!this.isWalkable(next.x, next.y)) {
-      this.refreshHud(this.turnEngine.next('Urti contro il muro.').logLine);
+      this.addLogLines(['Urti contro il muro.']);
+      this.refreshHud();
       return;
     }
 
@@ -133,9 +169,7 @@ export class RunScene extends Phaser.Scene {
         : 'L\'estrazione e sigillata. Ti manca il reperto.';
     }
 
-    this.updatePlayerVisual();
-    this.drawMap();
-    this.refreshHud(this.turnEngine.next(logLine).logLine);
+    this.resolvePlayerTurn([logLine]);
   }
 
   private interact(): void {
@@ -143,13 +177,17 @@ export class RunScene extends Phaser.Scene {
 
     if (tile === 'extraction' && this.extractionUnlocked) {
       this.isRunComplete = true;
-      this.refreshHud(this.turnEngine.next('Estrazione completata. Sei sopravvissuto.').logLine);
-      this.logLines.unshift('Premi SPACE per tornare al menu.');
-      this.updateLog();
+      this.turnEngine.next('Estrazione completata. Sei sopravvissuto.');
+      this.addLogLines([
+        'Estrazione completata. Sei sopravvissuto.',
+        'Premi R per una nuova run o SPACE per tornare al menu.',
+      ]);
+      this.drawMap();
+      this.refreshHud();
       return;
     }
 
-    this.refreshHud(this.turnEngine.next('Qui non c\'e nulla da attivare.').logLine);
+    this.resolvePlayerTurn(['Qui non c\'e nulla da attivare.']);
   }
 
   private isWalkable(x: number, y: number): boolean {
@@ -157,8 +195,7 @@ export class RunScene extends Phaser.Scene {
       return false;
     }
 
-    const tile = this.tiles[y][x];
-    return tile !== 'wall';
+    return this.tiles[y][x] !== 'wall';
   }
 
   private drawMap(): void {
@@ -177,6 +214,24 @@ export class RunScene extends Phaser.Scene {
           TILE_SIZE - 1,
         );
       }
+    }
+
+    for (const monster of this.monsters) {
+      this.mapGraphics.fillStyle(monster.color, 1);
+      this.mapGraphics.fillRect(
+        OFFSET_X + monster.position.x * TILE_SIZE + 4,
+        OFFSET_Y + monster.position.y * TILE_SIZE + 4,
+        TILE_SIZE - 8,
+        TILE_SIZE - 8,
+      );
+
+      this.mapGraphics.fillStyle(0x101419, 1);
+      this.mapGraphics.fillRect(
+        OFFSET_X + monster.position.x * TILE_SIZE + 8,
+        OFFSET_Y + monster.position.y * TILE_SIZE + 8,
+        TILE_SIZE - 16,
+        4,
+      );
     }
   }
 
@@ -202,21 +257,127 @@ export class RunScene extends Phaser.Scene {
     );
   }
 
-  private refreshHud(logLine: string): void {
-    this.logLines.unshift(logLine);
-    this.logLines = this.logLines.slice(0, 8);
-    this.updateLog();
-
+  private refreshHud(): void {
     this.hudText.setText(
       [
         `Turno: ${this.turnEngine.currentTurn}`,
+        `HP: ${this.playerHp}/${this.playerMaxHp}`,
         `Reperto: ${this.objectiveCollected ? 'RECUPERATO' : 'MANCANTE'}`,
         `Estrazione: ${this.extractionUnlocked ? 'ATTIVA' : 'BLOCCATA'}`,
+        `Mostri: ${this.monsters.length}`,
       ].join('   |   '),
     );
+
+    this.updateLog();
   }
 
   private updateLog(): void {
     this.logText.setText(['LOG', '', ...this.logLines].join('\n'));
+  }
+
+  private resolvePlayerTurn(logLines: string[]): void {
+    if (this.isRunComplete) {
+      return;
+    }
+
+    this.turnEngine.next(logLines[0] ?? 'Azione');
+    const monsterLogLines = this.runMonsterTurn();
+
+    this.updatePlayerVisual();
+    this.drawMap();
+    this.addLogLines([...logLines, ...monsterLogLines]);
+    this.refreshHud();
+  }
+
+  private addLogLines(lines: string[]): void {
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      this.logLines.unshift(lines[index]);
+    }
+
+    this.logLines = this.logLines.slice(0, 10);
+  }
+
+  private getMonsterAt(x: number, y: number): Monster | undefined {
+    return this.monsters.find((monster) => monster.position.x === x && monster.position.y === y);
+  }
+
+  private attackMonster(monster: Monster): string[] {
+    const damage = rollDamage(2, 4);
+    monster.hp -= damage;
+
+    if (monster.hp <= 0) {
+      this.monsters = this.monsters.filter((candidate) => candidate.id !== monster.id);
+      return [`Colpisci ${monster.name} per ${damage} e lo abbatti.`];
+    }
+
+    return [`Colpisci ${monster.name} per ${damage}. Gli restano ${monster.hp} HP.`];
+  }
+
+  private runMonsterTurn(): string[] {
+    const logLines: string[] = [];
+
+    for (const monster of this.monsters) {
+      if (this.isRunComplete) {
+        break;
+      }
+
+      if (isAdjacent(monster.position, this.player)) {
+        this.attackPlayer(monster, logLines);
+        continue;
+      }
+
+      const distanceToPlayer =
+        Math.abs(monster.position.x - this.player.x) + Math.abs(monster.position.y - this.player.y);
+
+      if (distanceToPlayer <= monster.alertRange) {
+        const chaseSteps = getStepTowardTarget(monster.position, this.player);
+        if (this.tryMoveMonster(monster, chaseSteps)) {
+          continue;
+        }
+      }
+
+      if (Math.random() > 0.35) {
+        continue;
+      }
+
+      this.tryMoveMonster(monster, getRandomNeighborSteps(monster.position));
+    }
+
+    return logLines;
+  }
+
+  private tryMoveMonster(monster: Monster, steps: Point[]): boolean {
+    for (const step of steps) {
+      if (!this.isWalkable(step.x, step.y)) {
+        continue;
+      }
+
+      if (step.x === this.player.x && step.y === this.player.y) {
+        continue;
+      }
+
+      if (this.getMonsterAt(step.x, step.y)) {
+        continue;
+      }
+
+      monster.position = step;
+      return true;
+    }
+
+    return false;
+  }
+
+  private attackPlayer(monster: Monster, logLines: string[]): void {
+    const damage = rollDamage(monster.damageMin, monster.damageMax);
+    this.playerHp = Math.max(0, this.playerHp - damage);
+
+    if (this.playerHp === 0) {
+      this.isRunComplete = true;
+      logLines.push(`${monster.name} ti infligge ${damage} danni. Sei morto nell'archivio.`);
+      logLines.push('Premi R per una nuova run o SPACE per tornare al menu.');
+      return;
+    }
+
+    logLines.push(`${monster.name} ti colpisce per ${damage}. Ti restano ${this.playerHp} HP.`);
   }
 }
