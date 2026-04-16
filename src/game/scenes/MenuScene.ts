@@ -115,7 +115,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private createRain(): void {
-    const glyphs = '01アイウエオ<>/[]{}+$#';
+    const glyphs = '01<>/[]{}+$#ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const columns = 18;
 
     for (let index = 0; index < columns; index += 1) {

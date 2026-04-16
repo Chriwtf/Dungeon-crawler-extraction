@@ -15,6 +15,7 @@ const createMonster = (kind, position, index, depth) => {
             damageMax: 4 + bonusDamage,
             color: 0xc75c5c,
             alertRange: 7 + Math.min(depth - 1, 2),
+            expReward: 10 + Math.max(0, depth - 1) * 2,
         };
     }
     return {
@@ -29,6 +30,7 @@ const createMonster = (kind, position, index, depth) => {
         damageMax: 2 + bonusDamage,
         color: 0xa3aab7,
         alertRange: 5 + Math.min(depth - 1, 2),
+        expReward: 6 + Math.max(0, depth - 1),
     };
 };
 const shuffle = (items) => {

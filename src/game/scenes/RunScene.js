@@ -4,7 +4,7 @@ import { getRandomNeighborSteps, getStepTowardTarget, isAdjacent, rollDamage, sp
 import { TurnEngine } from '../core/TurnEngine';
 import { applyItemEffect } from '../items/itemEffects';
 import { cloneItem, rollMonsterDrop, spawnGroundItems, } from '../items/inventory';
-import { BASE_PLAYER_STATS, derivePlayerStats } from '../items/playerStats';
+import { BASE_PLAYER_STATS, derivePlayerStats, getRunBonusesForLevel, getXpToNextLevel, } from '../items/playerStats';
 import { depositInventoryToStash } from '../state/metaProgression';
 import { createDungeonConfigForDepth, generateDungeon, } from '../world/DungeonGenerator';
 import { applyTextGlow, createTextStyle, drawBackdrop, drawScanlines, drawScreenFrame, drawTerminalPanel, matrixPalette, } from '../ui/matrixTheme';
@@ -24,6 +24,7 @@ const INVENTORY_PANEL_HEIGHT = 238;
 const DETAILS_PANEL_Y = INVENTORY_PANEL_Y + INVENTORY_PANEL_HEIGHT + PANEL_GAP;
 const DETAILS_PANEL_HEIGHT = 180;
 const PANEL_HEADER_HEIGHT = 30;
+const PASSIVE_REGEN_INTERVAL = 6;
 export class RunScene extends Phaser.Scene {
     constructor() {
         super('run');
@@ -183,6 +184,24 @@ export class RunScene extends Phaser.Scene {
             writable: true,
             value: BASE_PLAYER_STATS
         });
+        Object.defineProperty(this, "currentLevel", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 1
+        });
+        Object.defineProperty(this, "currentXp", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: 0
+        });
+        Object.defineProperty(this, "xpToNextLevel", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: getXpToNextLevel(1)
+        });
         Object.defineProperty(this, "isRunComplete", {
             enumerable: true,
             configurable: true,
@@ -314,7 +333,12 @@ export class RunScene extends Phaser.Scene {
         this.selectedSlot = 0;
         this.objectiveCollected = false;
         this.extractionUnlocked = false;
-        this.playerStats = derivePlayerStats(this.inventory);
+        if (depth === 1) {
+            this.currentLevel = 1;
+            this.currentXp = 0;
+            this.xpToNextLevel = getXpToNextLevel(this.currentLevel);
+        }
+        this.playerStats = derivePlayerStats(this.inventory, getRunBonusesForLevel(this.currentLevel));
         this.playerHp = Math.min(carryHp ?? this.playerStats.maxHp, this.playerStats.maxHp);
         this.isRunComplete = false;
         this.completionState = 'none';
@@ -511,6 +535,7 @@ export class RunScene extends Phaser.Scene {
             return;
         }
         this.playerHp = result.nextPlayerHp;
+        const bonusLogLines = [];
         if (item.kind === 'ember-bomb') {
             const adjacentTargets = this.monsters.filter((monster) => isAdjacent(monster.position, this.player));
             for (const monster of adjacentTargets) {
@@ -520,11 +545,12 @@ export class RunScene extends Phaser.Scene {
             this.monsters = this.monsters.filter((monster) => !result.removedMonsterIds.includes(monster.id));
             for (const monster of removedMonsters) {
                 this.dropItemFromMonster(monster);
+                bonusLogLines.push(...this.grantExperience(monster.expReward));
             }
         }
         this.inventory[this.selectedSlot] = null;
         this.recalculatePlayerStats();
-        this.resolvePlayerTurn(result.logLines);
+        this.resolvePlayerTurn([...result.logLines, ...bonusLogLines]);
     }
     dropSelectedItem() {
         const item = this.inventory[this.selectedSlot];
@@ -653,6 +679,8 @@ export class RunScene extends Phaser.Scene {
     refreshHud() {
         this.hudText.setText([
             `Livello: ${this.currentDepth}`,
+            `LVL: ${this.currentLevel}`,
+            `EXP: ${this.currentXp}/${this.xpToNextLevel}`,
             `Mappa: ${this.mapWidth}x${this.mapHeight}`,
             `HP: ${this.playerHp}/${this.playerStats.maxHp}`,
             `ATT: ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
@@ -671,6 +699,7 @@ export class RunScene extends Phaser.Scene {
     buildInventoryText() {
         const lines = [
             `Integrita ${this.playerHp}/${this.playerStats.maxHp}`,
+            `Livello ${this.currentLevel}   EXP ${this.currentXp}/${this.xpToNextLevel}`,
             `Danno ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
             `Armatura ${this.playerStats.armor}`,
             '',
@@ -716,6 +745,10 @@ export class RunScene extends Phaser.Scene {
             'TAB / 1-4 cambia slot',
             'E estrai quando l\'uscita e attiva',
             'R torna alla base subito',
+            '',
+            'PROGRESSIONE',
+            `LVL ${this.currentLevel}   EXP ${this.currentXp}/${this.xpToNextLevel}`,
+            `Rigenerazione passiva: +1 HP ogni ${PASSIVE_REGEN_INTERVAL} turni fuori dal combat`,
             '',
             'DETTAGLIO SLOT',
             selectedItem ? getItemAsciiLabel(selectedItem) : '...  (vuoto)',
@@ -766,7 +799,7 @@ export class RunScene extends Phaser.Scene {
     }
     recalculatePlayerStats() {
         const previousMaxHp = this.playerStats.maxHp;
-        this.playerStats = derivePlayerStats(this.inventory);
+        this.playerStats = derivePlayerStats(this.inventory, getRunBonusesForLevel(this.currentLevel));
         if (this.playerStats.maxHp !== previousMaxHp) {
             this.playerHp = Math.min(this.playerHp, this.playerStats.maxHp);
         }
@@ -777,9 +810,11 @@ export class RunScene extends Phaser.Scene {
         }
         this.turnEngine.next(logLines[0] ?? 'Azione');
         const monsterLogLines = this.runMonsterTurn();
+        const combatTriggeredThisTurn = this.didCombatHappenThisTurn(logLines, monsterLogLines);
+        const regenLogLines = this.applyPassiveRegen(combatTriggeredThisTurn);
         this.updatePlayerVisual();
         this.drawMap();
-        this.addLogLines([...logLines, ...monsterLogLines]);
+        this.addLogLines([...logLines, ...monsterLogLines, ...regenLogLines]);
         this.refreshHud();
     }
     addLogLines(lines) {
@@ -800,7 +835,10 @@ export class RunScene extends Phaser.Scene {
         if (monster.hp <= 0) {
             this.monsters = this.monsters.filter((candidate) => candidate.id !== monster.id);
             this.dropItemFromMonster(monster);
-            return [`Colpisci ${monster.name} per ${damage} e lo abbatti.`];
+            return [
+                `Colpisci ${monster.name} per ${damage} e lo abbatti.`,
+                ...this.grantExperience(monster.expReward),
+            ];
         }
         return [`Colpisci ${monster.name} per ${damage}. Gli restano ${monster.hp} HP.`];
     }
@@ -817,6 +855,46 @@ export class RunScene extends Phaser.Scene {
             position: { ...monster.position },
         });
         this.addLogLines([`${monster.name} lascia ${droppedItem.name}.`]);
+    }
+    grantExperience(amount) {
+        const logLines = [`Ottieni ${amount} EXP.`];
+        this.currentXp += amount;
+        while (this.currentXp >= this.xpToNextLevel) {
+            this.currentXp -= this.xpToNextLevel;
+            this.currentLevel += 1;
+            this.xpToNextLevel = getXpToNextLevel(this.currentLevel);
+            this.recalculatePlayerStats();
+            this.playerHp = Math.min(this.playerStats.maxHp, this.playerHp + 2);
+            logLines.push(`LEVEL UP -> ${this.currentLevel}: statistiche migliorate.`, `Ora hai HP ${this.playerStats.maxHp}, ATT ${this.playerStats.attackMin}-${this.playerStats.attackMax}, ARM ${this.playerStats.armor}.`);
+        }
+        return logLines;
+    }
+    applyPassiveRegen(combatTriggeredThisTurn) {
+        if (this.isRunComplete || this.playerHp >= this.playerStats.maxHp) {
+            return [];
+        }
+        if (combatTriggeredThisTurn || !this.isOutOfCombat()) {
+            return [];
+        }
+        if (this.turnEngine.currentTurn % PASSIVE_REGEN_INTERVAL !== 0) {
+            return [];
+        }
+        this.playerHp = Math.min(this.playerStats.maxHp, this.playerHp + 1);
+        return ['Rigenerazione passiva: recuperi 1 HP.'];
+    }
+    isOutOfCombat() {
+        return this.monsters.every((monster) => {
+            const distanceToPlayer = Math.abs(monster.position.x - this.player.x) + Math.abs(monster.position.y - this.player.y);
+            return distanceToPlayer > monster.alertRange;
+        });
+    }
+    didCombatHappenThisTurn(playerLogLines, monsterLogLines) {
+        if (monsterLogLines.length > 0) {
+            return true;
+        }
+        return playerLogLines.some((line) => line.startsWith('Colpisci') ||
+            line.startsWith('Attivi ') ||
+            line.includes('LEVEL UP ->'));
     }
     runMonsterTurn() {
         const logLines = [];

@@ -74,7 +74,7 @@ export class MenuScene extends Phaser.Scene {
         drawScanlines(scanlines, GAME_WIDTH, GAME_HEIGHT, 4);
     }
     createRain() {
-        const glyphs = '01アイウエオ<>/[]{}+$#';
+        const glyphs = '01<>/[]{}+$#ABCDEFGHIJKLMNOPQRSTUVWXYZ';
         const columns = 18;
         for (let index = 0; index < columns; index += 1) {
             const text = this.add.text(36 + index * 66, Phaser.Math.Between(-320, GAME_HEIGHT - 80), this.buildRainColumn(glyphs), {

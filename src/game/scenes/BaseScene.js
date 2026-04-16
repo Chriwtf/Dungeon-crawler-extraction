@@ -206,7 +206,7 @@ export class BaseScene extends Phaser.Scene {
         const selectedStashItem = this.stash[this.stashIndex];
         const selectedLoadoutItem = this.loadout[this.selectedSlot];
         const detailItem = selectedStashItem ?? selectedLoadoutItem;
-        this.asciiDetailText.setText(detailItem ? getItemAsciiArt(detailItem.kind) : ' .-. \n( . )\n `-` ');
+        this.asciiDetailText.setText(detailItem ? getItemAsciiArt(detailItem.kind) : ' .--. \n |  | \n `--` ');
         this.detailText.setText([
             `Slot attivo: ${this.selectedSlot + 1}`,
             selectedStashItem ? `Riga stash: ${getItemAsciiLabel(selectedStashItem)}` : 'Riga stash: (vuota)',
