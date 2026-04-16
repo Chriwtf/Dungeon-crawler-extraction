@@ -1,10 +1,11 @@
-import type { Item } from './inventory';
+import { BASE_INVENTORY_SIZE, getInventorySizeBonus, type Item } from './inventory';
 
 export type PlayerStats = {
   maxHp: number;
   attackMin: number;
   attackMax: number;
   armor: number;
+  inventorySize: number;
 };
 
 export type RunProgressionBonuses = {
@@ -18,6 +19,7 @@ export const BASE_PLAYER_STATS: PlayerStats = {
   attackMin: 2,
   attackMax: 4,
   armor: 0,
+  inventorySize: BASE_INVENTORY_SIZE,
 };
 
 export const EMPTY_RUN_BONUSES: RunProgressionBonuses = {
@@ -55,5 +57,6 @@ export const derivePlayerStats = (
     attackMin: BASE_PLAYER_STATS.attackMin + attackBonus + runBonuses.attack,
     attackMax: BASE_PLAYER_STATS.attackMax + attackBonus + runBonuses.attack,
     armor: BASE_PLAYER_STATS.armor + armorBonus + runBonuses.armor,
+    inventorySize: BASE_PLAYER_STATS.inventorySize + getInventorySizeBonus(inventory),
   };
 };

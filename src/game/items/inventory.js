@@ -1,3 +1,4 @@
+export const BASE_INVENTORY_SIZE = 4;
 const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const shuffle = (items) => {
     const copy = [...items];
@@ -14,6 +15,83 @@ const buildItemId = () => {
 };
 export const createItem = (kind, id = buildItemId()) => {
     switch (kind) {
+        case 'field-medkit':
+            return {
+                id,
+                kind,
+                category: 'consumable',
+                name: 'medkit da campo',
+                glyph: '!',
+                color: 0x5bf0ff,
+                description: 'Recuperi 6 HP. Drop piu raro dei piani profondi.',
+                healAmount: 6,
+            };
+        case 'inferno-charge':
+            return {
+                id,
+                kind,
+                category: 'consumable',
+                name: 'carica infernale',
+                glyph: '*',
+                color: 0xff9c42,
+                description: 'Esplode in mischia e infligge 5 danni ai mostri adiacenti.',
+                damageAmount: 5,
+            };
+        case 'steel-blade':
+            return {
+                id,
+                kind,
+                category: 'weapon',
+                name: 'lama in acciaio',
+                glyph: ')',
+                color: 0xf4e5a1,
+                description: 'Bonus passivo: +2 danni finche resta nello zaino.',
+                attackBonus: 2,
+            };
+        case 'plate-armor':
+            return {
+                id,
+                kind,
+                category: 'armor',
+                name: 'armatura a piastre',
+                glyph: '[',
+                color: 0xb4c5d8,
+                description: 'Bonus passivo: +2 armatura finche resta nello zaino.',
+                armorBonus: 2,
+            };
+        case 'scavenger-pack':
+            return {
+                id,
+                kind,
+                category: 'backpack',
+                name: 'zaino da razziatore',
+                glyph: '}',
+                color: 0xb08d57,
+                description: 'Bonus passivo da run: +1 slot inventario finche resta nello zaino.',
+                inventoryBonus: 1,
+            };
+        case 'expedition-pack':
+            return {
+                id,
+                kind,
+                category: 'backpack',
+                name: 'zaino da spedizione',
+                glyph: '}',
+                color: 0xc7a86a,
+                description: 'Bonus passivo da run: +2 slot inventario finche resta nello zaino.',
+                inventoryBonus: 2,
+            };
+        case 'hauler-rig':
+            return {
+                id,
+                kind,
+                category: 'backpack',
+                name: 'rig da trasporto',
+                glyph: '}',
+                color: 0xe4c27b,
+                description: 'Bonus passivo da run: +3 slot inventario finche resta nello zaino.',
+                inventoryBonus: 3,
+            };
         case 'ember-bomb':
             return {
                 id,
@@ -75,6 +153,42 @@ export const createItem = (kind, id = buildItemId()) => {
 export const cloneItem = (item) => ({ ...item });
 export const serializeItem = (item) => ({ ...item });
 export const hydrateItem = (storedItem) => createItem(storedItem.kind, storedItem.id);
+export const getInventorySizeBonus = (inventory) => {
+    let bestBackpackBonus = 0;
+    for (const item of inventory) {
+        if (!item) {
+            continue;
+        }
+        bestBackpackBonus = Math.max(bestBackpackBonus, item.inventoryBonus ?? 0);
+    }
+    return bestBackpackBonus;
+};
+const DEPTH_WEIGHTED_ITEMS = [
+    { kind: 'medkit', weight: 24 },
+    { kind: 'stim-pack', weight: 18 },
+    { kind: 'ember-bomb', weight: 14 },
+    { kind: 'rusted-blade', weight: 13 },
+    { kind: 'scrap-armor', weight: 13 },
+    { kind: 'field-medkit', weight: 12, minDepth: 3 },
+    { kind: 'inferno-charge', weight: 10, minDepth: 4 },
+    { kind: 'steel-blade', weight: 10, minDepth: 4 },
+    { kind: 'plate-armor', weight: 10, minDepth: 5 },
+    { kind: 'scavenger-pack', weight: 9, minDepth: 2 },
+    { kind: 'expedition-pack', weight: 7, minDepth: 5 },
+    { kind: 'hauler-rig', weight: 4, minDepth: 8 },
+];
+const getDepthLootPool = (depth) => DEPTH_WEIGHTED_ITEMS.filter((entry) => depth >= (entry.minDepth ?? 1));
+const rollWeightedItemKind = (pool) => {
+    const totalWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
+    let roll = Math.random() * totalWeight;
+    for (const entry of pool) {
+        roll -= entry.weight;
+        if (roll <= 0) {
+            return entry.kind;
+        }
+    }
+    return pool[pool.length - 1].kind;
+};
 const getAvailableFloorTiles = (tiles, reserved) => {
     const reservedKeys = new Set(reserved.map((point) => `${point.x},${point.y}`));
     const positions = [];
@@ -94,39 +208,21 @@ const getAvailableFloorTiles = (tiles, reserved) => {
 };
 export const spawnGroundItems = (tiles, reserved, depth = 1) => {
     const positions = shuffle(getAvailableFloorTiles(tiles, reserved));
-    const itemKinds = [
-        'medkit',
-        'stim-pack',
-        'ember-bomb',
-        'rusted-blade',
-        'scrap-armor',
-    ];
-    const count = Math.min(itemKinds.length + Math.min(depth - 1, 2), Math.max(2, Math.floor(positions.length / 28) + Math.floor((depth - 1) / 2)));
+    const count = Math.min(getDepthLootPool(depth).length + Math.min(depth - 1, 2), Math.max(2, Math.floor(positions.length / 28) + Math.floor((depth - 1) / 2)));
     const result = [];
+    const pool = getDepthLootPool(depth);
     for (let i = 0; i < count; i += 1) {
         result.push({
-            item: createItem(itemKinds[i % itemKinds.length]),
+            item: createItem(rollWeightedItemKind(pool)),
             position: positions[i],
         });
     }
     return result;
 };
-export const rollMonsterDrop = () => {
-    const roll = Math.random();
-    if (roll < 0.3) {
-        return createItem('medkit');
+export const rollMonsterDrop = (depth = 1) => {
+    const dropChance = Math.min(0.82, 0.42 + depth * 0.035);
+    if (Math.random() > dropChance) {
+        return null;
     }
-    if (roll < 0.45) {
-        return createItem('stim-pack');
-    }
-    if (roll < 0.58) {
-        return createItem('ember-bomb');
-    }
-    if (roll < 0.73) {
-        return createItem('rusted-blade');
-    }
-    if (roll < 0.86) {
-        return createItem('scrap-armor');
-    }
-    return null;
+    return createItem(rollWeightedItemKind(getDepthLootPool(depth)));
 };

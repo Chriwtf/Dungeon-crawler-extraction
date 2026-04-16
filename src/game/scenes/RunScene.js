@@ -3,13 +3,12 @@ import { GAME_HEIGHT, GAME_WIDTH } from '../config';
 import { getRandomNeighborSteps, getStepTowardTarget, isAdjacent, isBossDepth, isFinalDepth, MAX_DUNGEON_DEPTH, rollDamage, spawnMonsters, } from '../combat/monsters';
 import { TurnEngine } from '../core/TurnEngine';
 import { applyItemEffect } from '../items/itemEffects';
-import { cloneItem, rollMonsterDrop, spawnGroundItems, } from '../items/inventory';
+import { BASE_INVENTORY_SIZE, cloneItem, getInventorySizeBonus, rollMonsterDrop, spawnGroundItems, } from '../items/inventory';
 import { BASE_PLAYER_STATS, derivePlayerStats, getRunBonusesForLevel, getXpToNextLevel, } from '../items/playerStats';
 import { depositInventoryToStash } from '../state/metaProgression';
 import { createDungeonConfigForDepth, generateDungeon, } from '../world/DungeonGenerator';
 import { applyTextGlow, createTextStyle, drawBackdrop, drawScanlines, drawScreenFrame, drawTerminalPanel, matrixPalette, } from '../ui/matrixTheme';
 import { getItemAsciiArt, getItemAsciiLabel, getMonsterAsciiArt, PLAYER_ASCII_ART, PLAYER_GLYPH, } from '../ui/asciiModels';
-const INVENTORY_SIZE = 4;
 const MAP_AREA_X = 40;
 const MAP_AREA_Y = 56;
 const MAP_AREA_WIDTH = 760;
@@ -55,7 +54,7 @@ export class RunScene extends Phaser.Scene {
             enumerable: true,
             configurable: true,
             writable: true,
-            value: Array(INVENTORY_SIZE).fill(null)
+            value: Array(BASE_INVENTORY_SIZE).fill(null)
         });
         Object.defineProperty(this, "selectedSlot", {
             enumerable: true,
@@ -326,14 +325,37 @@ export class RunScene extends Phaser.Scene {
         drawScanlines(this.scanlineGraphics, GAME_WIDTH, GAME_HEIGHT, 4);
     }
     normalizeInventory(source) {
-        const inventory = Array(INVENTORY_SIZE).fill(null);
+        const sourceItems = (source ?? []).filter((item) => item !== null);
+        const derivedSize = BASE_INVENTORY_SIZE + getInventorySizeBonus(sourceItems);
+        const targetSize = Math.max(BASE_INVENTORY_SIZE, derivedSize, source?.length ?? 0);
+        const inventory = Array(targetSize).fill(null);
         if (!source) {
             return inventory;
         }
-        for (let index = 0; index < Math.min(source.length, INVENTORY_SIZE); index += 1) {
+        for (let index = 0; index < Math.min(source.length, targetSize); index += 1) {
             inventory[index] = source[index] ? cloneItem(source[index]) : null;
         }
         return inventory;
+    }
+    getInventorySize() {
+        return this.playerStats.inventorySize;
+    }
+    getOccupiedSlots() {
+        return this.inventory.filter((item) => item !== null).length;
+    }
+    syncInventoryCapacity() {
+        const targetSize = this.getInventorySize();
+        if (this.inventory.length < targetSize) {
+            this.inventory = [...this.inventory, ...Array(targetSize - this.inventory.length).fill(null)];
+        }
+        else if (this.inventory.length > targetSize) {
+            this.inventory = this.inventory.slice(0, targetSize);
+        }
+        this.selectedSlot = Phaser.Math.Clamp(this.selectedSlot, 0, Math.max(0, targetSize - 1));
+    }
+    canRemoveItemWithoutOverflow(item) {
+        const nextInventorySize = BASE_INVENTORY_SIZE + getInventorySizeBonus(this.inventory.filter((entry) => entry !== null && entry.id !== item.id));
+        return this.getOccupiedSlots() - 1 <= nextInventorySize;
     }
     setupRun({ depth, carryInventory, carryHp, }) {
         const clampedDepth = Phaser.Math.Clamp(depth, 1, MAX_DUNGEON_DEPTH);
@@ -439,6 +461,9 @@ export class RunScene extends Phaser.Scene {
                 case 'Digit2':
                 case 'Digit3':
                 case 'Digit4':
+                case 'Digit5':
+                case 'Digit6':
+                case 'Digit7':
                     this.selectInventorySlot(Number(event.code.replace('Digit', '')) - 1);
                     break;
                 case 'KeyR':
@@ -551,7 +576,7 @@ export class RunScene extends Phaser.Scene {
         }
         const freeSlot = this.inventory.findIndex((item) => item === null);
         if (freeSlot === -1) {
-            this.addLogLines(['Inventario pieno. Hai solo 4 slot.']);
+            this.addLogLines([`Inventario pieno. Hai solo ${this.getInventorySize()} slot attivi in questa run.`]);
             this.refreshHud();
             return;
         }
@@ -565,6 +590,11 @@ export class RunScene extends Phaser.Scene {
         const item = this.inventory[this.selectedSlot];
         if (!item) {
             this.addLogLines([`Lo slot ${this.selectedSlot + 1} e vuoto.`]);
+            this.refreshHud();
+            return;
+        }
+        if (item.category === 'backpack' && !this.canRemoveItemWithoutOverflow(item)) {
+            this.addLogLines(['Non puoi rimuovere questo zaino: perderesti slot ancora occupati.']);
             this.refreshHud();
             return;
         }
@@ -610,6 +640,11 @@ export class RunScene extends Phaser.Scene {
             this.refreshHud();
             return;
         }
+        if (item.category === 'backpack' && !this.canRemoveItemWithoutOverflow(item)) {
+            this.addLogLines(['Non puoi lasciare questo zaino: perderesti slot ancora occupati.']);
+            this.refreshHud();
+            return;
+        }
         if (this.getGroundItemAt(this.player.x, this.player.y)) {
             this.addLogLines(['C\'e gia un oggetto a terra su questa casella.']);
             this.refreshHud();
@@ -624,11 +659,14 @@ export class RunScene extends Phaser.Scene {
         this.resolvePlayerTurn([`Lasci ${item.name} a terra.`]);
     }
     selectNextSlot() {
-        this.selectedSlot = (this.selectedSlot + 1) % INVENTORY_SIZE;
+        this.selectedSlot = (this.selectedSlot + 1) % this.getInventorySize();
         this.addLogLines([`Slot attivo: ${this.selectedSlot + 1}.`]);
         this.refreshHud();
     }
     selectInventorySlot(slotIndex) {
+        if (slotIndex < 0 || slotIndex >= this.getInventorySize()) {
+            return;
+        }
         this.selectedSlot = slotIndex;
         this.addLogLines([`Slot attivo: ${this.selectedSlot + 1}.`]);
         this.refreshHud();
@@ -736,6 +774,7 @@ export class RunScene extends Phaser.Scene {
             `HP: ${this.playerHp}/${this.playerStats.maxHp}`,
             `ATT: ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
             `ARM: ${this.playerStats.armor}`,
+            `SLOT: ${this.getOccupiedSlots()}/${this.getInventorySize()}`,
             this.getObjectiveHudLabel(),
             `Mostri: ${this.monsters.length}`,
         ].join('   |   '));
@@ -753,10 +792,11 @@ export class RunScene extends Phaser.Scene {
             `Livello ${this.currentLevel}   EXP ${this.currentXp}/${this.xpToNextLevel}`,
             `Danno ${this.playerStats.attackMin}-${this.playerStats.attackMax}`,
             `Armatura ${this.playerStats.armor}`,
+            `Capienza ${this.getOccupiedSlots()}/${this.getInventorySize()}`,
             '',
             'INVENTARIO ATTIVO',
         ];
-        for (let index = 0; index < INVENTORY_SIZE; index += 1) {
+        for (let index = 0; index < this.getInventorySize(); index += 1) {
             const item = this.inventory[index];
             const marker = index === this.selectedSlot ? '[>]' : '[ ]';
             const itemLabel = item ? `${item.name}${this.getPassiveTag(item)}` : '(vuoto)';
@@ -803,7 +843,7 @@ export class RunScene extends Phaser.Scene {
             'G raccogli da terra',
             'F usa consumabile',
             'Q lascia oggetto',
-            'TAB / 1-4 cambia slot',
+            `TAB / 1-${this.getInventorySize()} cambia slot`,
             this.isFinalFloor ? 'Boss finale: sconfiggilo per chiudere la spedizione' : 'E estrai quando l\'uscita e attiva',
             'R torna alla base subito',
             '',
@@ -854,11 +894,15 @@ export class RunScene extends Phaser.Scene {
         if (item.category === 'armor') {
             return ` (+${item.armorBonus ?? 0} arm)`;
         }
+        if (item.category === 'backpack') {
+            return ` (+${item.inventoryBonus ?? 0} slot run)`;
+        }
         return '';
     }
     recalculatePlayerStats() {
         const previousMaxHp = this.playerStats.maxHp;
         this.playerStats = derivePlayerStats(this.inventory, getRunBonusesForLevel(this.currentLevel));
+        this.syncInventoryCapacity();
         if (this.playerStats.maxHp !== previousMaxHp) {
             this.playerHp = Math.min(this.playerHp, this.playerStats.maxHp);
         }
@@ -900,7 +944,7 @@ export class RunScene extends Phaser.Scene {
         return [`Colpisci ${monster.name} per ${damage}. Gli restano ${monster.hp} HP.`];
     }
     dropItemFromMonster(monster) {
-        const droppedItem = rollMonsterDrop();
+        const droppedItem = rollMonsterDrop(this.currentDepth);
         if (!droppedItem) {
             return;
         }

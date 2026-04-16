@@ -24,7 +24,7 @@ export const applyItemEffect = ({
   playerPosition,
   monsters,
 }: ItemEffectInput): ItemEffectResult => {
-  if (item.kind === 'medkit' || item.kind === 'stim-pack') {
+  if ((item.healAmount ?? 0) > 0) {
     if (playerHp >= playerMaxHp) {
       return {
         consumed: false,
@@ -43,7 +43,7 @@ export const applyItemEffect = ({
     };
   }
 
-  if (item.kind === 'ember-bomb') {
+  if ((item.damageAmount ?? 0) > 0) {
     const adjacentTargets = monsters.filter((monster) => isAdjacent(monster.position, playerPosition));
     if (adjacentTargets.length === 0) {
       return {

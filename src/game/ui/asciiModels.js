@@ -52,6 +52,41 @@ const ITEM_ASCII_ART = {
         ' |====| ',
         " '-[]-' ",
     ].join('\n'),
+    'field-medkit': [
+        ' .----. ',
+        ' | ++ | ',
+        ' |++++| ',
+    ].join('\n'),
+    'inferno-charge': [
+        '  .*.   ',
+        ' {###}> ',
+        '  \\|/   ',
+    ].join('\n'),
+    'steel-blade': [
+        '   /\\   ',
+        '=={##>  ',
+        '   \\\\/   ',
+    ].join('\n'),
+    'plate-armor': [
+        ' .-##-. ',
+        ' |====| ',
+        " '[__]' ",
+    ].join('\n'),
+    'scavenger-pack': [
+        ' .-[]-. ',
+        ' | ## | ',
+        " '----' ",
+    ].join('\n'),
+    'expedition-pack': [
+        ' .-[]-. ',
+        ' |####| ',
+        " '====' ",
+    ].join('\n'),
+    'hauler-rig': [
+        ' .-[]-. ',
+        ' |####| ',
+        ' |####| ',
+    ].join('\n'),
 };
 export const getMonsterAsciiArt = (kind) => MONSTER_ASCII_ART[kind];
 export const getItemAsciiArt = (kind) => ITEM_ASCII_ART[kind];
