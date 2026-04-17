@@ -17,10 +17,10 @@ export const getRunBonusesForLevel = (level) => ({
     armor: Math.floor(Math.max(0, level - 1) / 3),
 });
 export const getXpToNextLevel = (level) => 10 + (level - 1) * 6;
-export const derivePlayerStats = (inventory, runBonuses = EMPTY_RUN_BONUSES) => {
+export const derivePlayerStats = (inventory, runBonuses = EMPTY_RUN_BONUSES, backpack = null) => {
     let attackBonus = 0;
     let armorBonus = 0;
-    for (const item of inventory) {
+    for (const item of [...inventory, backpack]) {
         if (!item) {
             continue;
         }
@@ -32,6 +32,6 @@ export const derivePlayerStats = (inventory, runBonuses = EMPTY_RUN_BONUSES) => 
         attackMin: BASE_PLAYER_STATS.attackMin + attackBonus + runBonuses.attack,
         attackMax: BASE_PLAYER_STATS.attackMax + attackBonus + runBonuses.attack,
         armor: BASE_PLAYER_STATS.armor + armorBonus + runBonuses.armor,
-        inventorySize: BASE_PLAYER_STATS.inventorySize + getInventorySizeBonus(inventory),
+        inventorySize: BASE_PLAYER_STATS.inventorySize + getInventorySizeBonus([...inventory, backpack]),
     };
 };

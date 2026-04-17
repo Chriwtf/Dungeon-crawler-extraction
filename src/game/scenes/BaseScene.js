@@ -4,6 +4,29 @@ import { consumeLoadoutForRun, equipLoadoutItem, getMetaState, unequipLoadoutIte
 import { applyTextGlow, createTextStyle, drawBackdrop, drawScanlines, drawScreenFrame, drawTerminalPanel, matrixPalette, } from '../ui/matrixTheme';
 import { getItemAsciiArt, getItemAsciiLabel } from '../ui/asciiModels';
 const LOADOUT_SIZE = 4;
+const STASH_PANEL_X = 54;
+const STASH_PANEL_Y = 146;
+const STASH_PANEL_WIDTH = 454;
+const STASH_PANEL_HEIGHT = 512;
+const LOADOUT_PANEL_X = 560;
+const LOADOUT_PANEL_Y = 146;
+const LOADOUT_PANEL_WIDTH = 626;
+const LOADOUT_PANEL_HEIGHT = 244;
+const DETAIL_PANEL_X = 560;
+const DETAIL_PANEL_Y = 414;
+const DETAIL_PANEL_WIDTH = 626;
+const DETAIL_PANEL_HEIGHT = 244;
+const PANEL_HEADER_HEIGHT = 34;
+const PANEL_INNER_PADDING_X = 26;
+const PANEL_INNER_PADDING_TOP = 59;
+const PANEL_INNER_PADDING_BOTTOM = 22;
+const DETAIL_PREVIEW_WIDTH = 124;
+const DETAIL_COLUMN_GAP = 22;
+const DETAIL_BODY_X = DETAIL_PANEL_X + PANEL_INNER_PADDING_X;
+const DETAIL_BODY_Y = DETAIL_PANEL_Y + PANEL_INNER_PADDING_TOP;
+const DETAIL_BODY_HEIGHT = DETAIL_PANEL_HEIGHT - PANEL_INNER_PADDING_TOP - PANEL_INNER_PADDING_BOTTOM;
+const DETAIL_TEXT_WIDTH = DETAIL_PANEL_WIDTH - (PANEL_INNER_PADDING_X * 2) - DETAIL_PREVIEW_WIDTH - DETAIL_COLUMN_GAP;
+const DETAIL_PREVIEW_CENTER_X = DETAIL_PANEL_X + DETAIL_PANEL_WIDTH - PANEL_INNER_PADDING_X - Math.floor(DETAIL_PREVIEW_WIDTH / 2);
 export class BaseScene extends Phaser.Scene {
     constructor() {
         super('base');
@@ -49,6 +72,12 @@ export class BaseScene extends Phaser.Scene {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "panelMaskGraphics", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: []
+        });
         Object.defineProperty(this, "stash", {
             enumerable: true,
             configurable: true,
@@ -80,9 +109,30 @@ export class BaseScene extends Phaser.Scene {
         drawBackdrop(backdrop, GAME_WIDTH, GAME_HEIGHT);
         this.chromeGraphics = this.add.graphics();
         drawScreenFrame(this.chromeGraphics, GAME_WIDTH, GAME_HEIGHT);
-        drawTerminalPanel({ graphics: this.chromeGraphics, x: 54, y: 146, width: 454, height: 512, headerHeight: 34 });
-        drawTerminalPanel({ graphics: this.chromeGraphics, x: 560, y: 146, width: 626, height: 244, headerHeight: 34 });
-        drawTerminalPanel({ graphics: this.chromeGraphics, x: 560, y: 414, width: 626, height: 244, headerHeight: 34 });
+        drawTerminalPanel({
+            graphics: this.chromeGraphics,
+            x: STASH_PANEL_X,
+            y: STASH_PANEL_Y,
+            width: STASH_PANEL_WIDTH,
+            height: STASH_PANEL_HEIGHT,
+            headerHeight: PANEL_HEADER_HEIGHT,
+        });
+        drawTerminalPanel({
+            graphics: this.chromeGraphics,
+            x: LOADOUT_PANEL_X,
+            y: LOADOUT_PANEL_Y,
+            width: LOADOUT_PANEL_WIDTH,
+            height: LOADOUT_PANEL_HEIGHT,
+            headerHeight: PANEL_HEADER_HEIGHT,
+        });
+        drawTerminalPanel({
+            graphics: this.chromeGraphics,
+            x: DETAIL_PANEL_X,
+            y: DETAIL_PANEL_Y,
+            width: DETAIL_PANEL_WIDTH,
+            height: DETAIL_PANEL_HEIGHT,
+            headerHeight: PANEL_HEADER_HEIGHT,
+        });
         this.titleText = applyTextGlow(this.add.text(GAME_WIDTH / 2, 52, 'SAFEHOUSE // STASH TERMINAL', createTextStyle('30px', matrixPalette.accent, 'center')), matrixPalette.accent, 16).setOrigin(0.5);
         this.helpText = this.add.text(GAME_WIDTH / 2, 98, '', {
             ...createTextStyle('15px', matrixPalette.textDim, 'center'),
@@ -96,20 +146,24 @@ export class BaseScene extends Phaser.Scene {
             lineSpacing: 2,
             wordWrap: { width: 380 },
         });
+        this.constrainTextToPanel(this.stashText, STASH_PANEL_X + PANEL_INNER_PADDING_X, STASH_PANEL_Y + PANEL_INNER_PADDING_TOP, STASH_PANEL_WIDTH - (PANEL_INNER_PADDING_X * 2), STASH_PANEL_HEIGHT - PANEL_INNER_PADDING_TOP - PANEL_INNER_PADDING_BOTTOM);
         this.loadoutText = this.add.text(610, 205, '', {
             ...createTextStyle('16px', matrixPalette.text),
             lineSpacing: 4,
             wordWrap: { width: 330 },
         });
-        this.detailText = this.add.text(610, 445, '', {
+        this.constrainTextToPanel(this.loadoutText, LOADOUT_PANEL_X + PANEL_INNER_PADDING_X, LOADOUT_PANEL_Y + PANEL_INNER_PADDING_TOP, LOADOUT_PANEL_WIDTH - (PANEL_INNER_PADDING_X * 2), LOADOUT_PANEL_HEIGHT - PANEL_INNER_PADDING_TOP - PANEL_INNER_PADDING_BOTTOM);
+        this.detailText = this.add.text(DETAIL_BODY_X, DETAIL_BODY_Y, '', {
             ...createTextStyle('15px', matrixPalette.textDim),
             lineSpacing: 3,
-            wordWrap: { width: 540 },
+            wordWrap: { width: DETAIL_TEXT_WIDTH, useAdvancedWrap: true },
         });
-        this.asciiDetailText = this.add.text(1040, 448, '', {
+        this.constrainTextToPanel(this.detailText, DETAIL_BODY_X, DETAIL_BODY_Y, DETAIL_TEXT_WIDTH, DETAIL_BODY_HEIGHT);
+        this.asciiDetailText = this.add.text(DETAIL_PREVIEW_CENTER_X, DETAIL_BODY_Y + 3, '', {
             ...createTextStyle('14px', matrixPalette.accent, 'center'),
             lineSpacing: 5,
         }).setOrigin(0.5, 0);
+        this.constrainTextToPanel(this.asciiDetailText, DETAIL_PANEL_X + DETAIL_PANEL_WIDTH - PANEL_INNER_PADDING_X - DETAIL_PREVIEW_WIDTH, DETAIL_BODY_Y, DETAIL_PREVIEW_WIDTH, DETAIL_BODY_HEIGHT);
         applyTextGlow(this.asciiDetailText, matrixPalette.accent, 10);
         const scanlines = this.add.graphics();
         drawScanlines(scanlines, GAME_WIDTH, GAME_HEIGHT, 4);
@@ -151,6 +205,19 @@ export class BaseScene extends Phaser.Scene {
             }
         });
     }
+    constrainTextToPanel(text, x, y, width, height) {
+        text.setFixedSize(width, height);
+        text.setPadding(0, 0, 0, 0);
+        text.setMask(this.createPanelMask(x, y, width, height));
+    }
+    createPanelMask(x, y, width, height) {
+        const maskShape = this.make.graphics({});
+        maskShape.fillStyle(0xffffff, 1);
+        maskShape.fillRect(x, y, width, height);
+        maskShape.setVisible(false);
+        this.panelMaskGraphics.push(maskShape);
+        return maskShape.createGeometryMask();
+    }
     reloadState() {
         const state = getMetaState();
         this.stash = state.stash;
@@ -185,10 +252,24 @@ export class BaseScene extends Phaser.Scene {
             startingInventory,
         });
     }
+    getEquippedBackpack() {
+        return this.loadout.find((item) => item?.category === 'backpack') ?? null;
+    }
+    formatLoadoutItemLabel(item) {
+        if (!item) {
+            return '(vuoto)';
+        }
+        if (item.category === 'backpack') {
+            return `${item.name} [zaino]`;
+        }
+        return item.name;
+    }
     refreshTexts() {
+        const equippedBackpack = this.getEquippedBackpack();
         this.helpText.setText([
             'W/S scorri stash   1-4 scegli slot loadout',
             'E equipaggia   Q rimetti in stash   SPACE avvia run   ESC torna al menu',
+            `Zaino run: ${equippedBackpack ? equippedBackpack.name : '(nessuno)'}`,
             'Gli oggetti caricati escono dalla stash e vengono persi se muori nella spedizione.',
         ].join('\n'));
         const stashLines = this.stash.length === 0
@@ -200,7 +281,7 @@ export class BaseScene extends Phaser.Scene {
         this.stashText.setText(stashLines.join('\n'));
         const loadoutLines = this.loadout.map((item, index) => {
             const marker = index === this.selectedSlot ? '[>]' : '[ ]';
-            return `${marker} SLOT ${index + 1}  ${item ? item.name : '(vuoto)'}`;
+            return `${marker} SLOT ${index + 1}  ${this.formatLoadoutItemLabel(item)}`;
         });
         this.loadoutText.setText(loadoutLines.join('\n'));
         const selectedStashItem = this.stash[this.stashIndex];
@@ -210,9 +291,11 @@ export class BaseScene extends Phaser.Scene {
         this.detailText.setText([
             `Slot attivo: ${this.selectedSlot + 1}`,
             selectedStashItem ? `Riga stash: ${getItemAsciiLabel(selectedStashItem)}` : 'Riga stash: (vuota)',
+            `Zaino run: ${equippedBackpack ? getItemAsciiLabel(equippedBackpack) : '(nessuno)'}`,
             '',
             detailItem ? detailItem.description : 'Nessun oggetto selezionato.',
             '',
+            'Gli zaini partono comunque nello slot zaino dedicato della run.',
             'Premendo SPACE la run parte con il loadout mostrato sopra.',
         ].join('\n'));
     }
