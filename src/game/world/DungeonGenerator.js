@@ -3,7 +3,16 @@ export const BASE_MAP_WIDTH = 32;
 export const BASE_MAP_HEIGHT = 20;
 const MIN_REQUIRED_ROOMS = 3;
 const MAX_GENERATION_ATTEMPTS = 8;
-const randomBetween = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+const randomBetween = (random, min, max) => Math.floor(random() * (max - min + 1)) + min;
+const createSeededRandom = (seed) => {
+    let state = seed >>> 0 || 0x9e3779b9;
+    return () => {
+        state ^= state << 13;
+        state ^= state >>> 17;
+        state ^= state << 5;
+        return (state >>> 0) / 4294967296;
+    };
+};
 const createFilledGrid = (config) => Array.from({ length: config.height }, () => Array.from({ length: config.width }, () => 'wall'));
 const carveRoom = (tiles, room) => {
     for (let y = room.y; y < room.y + room.h; y += 1) {
@@ -37,8 +46,8 @@ const createRoom = (x, y, w, h) => ({
         y: Math.floor(y + h / 2),
     },
 });
-const connectRooms = (tiles, from, to) => {
-    if (Math.random() > 0.5) {
+const connectRooms = (tiles, from, to, random) => {
+    if (random() > 0.5) {
         carveHorizontalTunnel(tiles, from.x, to.x, from.y);
         carveVerticalTunnel(tiles, from.y, to.y, to.x);
         return;
@@ -46,30 +55,30 @@ const connectRooms = (tiles, from, to) => {
     carveVerticalTunnel(tiles, from.y, to.y, from.x);
     carveHorizontalTunnel(tiles, from.x, to.x, to.y);
 };
-const generateRandomRooms = (config) => {
+const generateRandomRooms = (config, random) => {
     const tiles = createFilledGrid(config);
     const rooms = [];
     for (let i = 0; i < config.targetRooms; i += 1) {
-        const w = randomBetween(config.minRoomSize, config.maxRoomSize);
-        const h = randomBetween(config.minRoomSize, config.maxRoomSize);
+        const w = randomBetween(random, config.minRoomSize, config.maxRoomSize);
+        const h = randomBetween(random, config.minRoomSize, config.maxRoomSize);
         if (config.width - w - 2 <= 1 || config.height - h - 2 <= 1) {
             continue;
         }
-        const x = randomBetween(1, config.width - w - 2);
-        const y = randomBetween(1, config.height - h - 2);
+        const x = randomBetween(random, 1, config.width - w - 2);
+        const y = randomBetween(random, 1, config.height - h - 2);
         const room = createRoom(x, y, w, h);
         if (rooms.some((existing) => intersects(room, existing))) {
             continue;
         }
         carveRoom(tiles, room);
         if (rooms.length > 0) {
-            connectRooms(tiles, rooms[rooms.length - 1].center, room.center);
+            connectRooms(tiles, rooms[rooms.length - 1].center, room.center, random);
         }
         rooms.push(room);
     }
     return { tiles, rooms };
 };
-const generateFallbackRooms = (config) => {
+const generateFallbackRooms = (config, random) => {
     const tiles = createFilledGrid(config);
     const roomWidth = Math.max(config.minRoomSize + 1, Math.floor(config.width / 6));
     const roomHeight = Math.max(config.minRoomSize + 1, Math.floor(config.height / 3));
@@ -81,18 +90,18 @@ const generateFallbackRooms = (config) => {
     for (const room of rooms) {
         carveRoom(tiles, room);
     }
-    connectRooms(tiles, rooms[0].center, rooms[1].center);
-    connectRooms(tiles, rooms[1].center, rooms[2].center);
+    connectRooms(tiles, rooms[0].center, rooms[1].center, random);
+    connectRooms(tiles, rooms[1].center, rooms[2].center, random);
     return { tiles, rooms };
 };
-const buildDungeonLayout = (config) => {
+const buildDungeonLayout = (config, random) => {
     for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
-        const layout = generateRandomRooms(config);
+        const layout = generateRandomRooms(config, random);
         if (layout.rooms.length >= MIN_REQUIRED_ROOMS) {
             return layout;
         }
     }
-    return generateFallbackRooms(config);
+    return generateFallbackRooms(config, random);
 };
 export const createDungeonConfigForDepth = (depth) => {
     const clampedDepth = Math.max(1, depth);
@@ -104,8 +113,9 @@ export const createDungeonConfigForDepth = (depth) => {
         maxRoomSize: Math.min(8 + Math.floor((clampedDepth - 1) / 2), 10),
     };
 };
-export const generateDungeon = (config) => {
-    const { tiles, rooms } = buildDungeonLayout(config);
+export const generateDungeon = (config, seed) => {
+    const random = seed === undefined ? Math.random : createSeededRandom(seed);
+    const { tiles, rooms } = buildDungeonLayout(config, random);
     const playerStart = rooms[0].center;
     const objective = rooms[rooms.length - 2].center;
     const extraction = rooms[rooms.length - 1].center;

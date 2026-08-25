@@ -1,10 +1,23 @@
-import { Camera, MeshBuilder, SceneNode, createEnvironment, createRenderer, startLoop, } from '@driftengine/core';
-import { DrftLoader } from '@driftengine/assets';
+import { Camera, MeshBuilder, SceneNode, createPointLightBuffer, createEnvironment, createRenderer, selectPointLights, startLoop, } from '@driftengine/core';
+import { placeRunLoot } from '../game/core/RunLoot';
+import { propagateNoise } from '../game/core/NoiseSystem';
+import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
+import { RunSimulation } from '../game/core/RunSimulation';
+import { generateDungeon } from '../game/world/DungeonGenerator';
+import { buildDungeonMeshes, pointToWorld, worldToPoint } from './ProceduralDungeon3d';
+import { buildObjectiveTextureMeshes } from './ObjectiveTextureMeshes';
+import { buildLootPropMeshes } from './LootProps3d';
+import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
+import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
+import relicTextureUrl from '../assets/textures/relic-pedestal-albedo.png?url';
+import extractionTextureUrl from '../assets/textures/extraction-hatch-albedo.png?url';
+import documentLootTextureUrl from '../assets/textures/loot-document-albedo.png?url';
+import sampleLootTextureUrl from '../assets/textures/loot-sample-albedo.png?url';
+import componentLootTextureUrl from '../assets/textures/loot-component-albedo.png?url';
+import artifactLootTextureUrl from '../assets/textures/loot-artifact-albedo.png?url';
 const STEP_METRES = 2;
 const PLAYER_HEIGHT = 1.65;
-const MAP_X_OFFSET = -12;
-const RELIC_POSITION = { x: 14, z: 0 };
-const EXTRACTION_POSITION = { x: -16, z: 0 };
+const RUN_SEED = 827491;
 const CARDINALS = [
     [0, -1],
     [1, 0],
@@ -23,22 +36,46 @@ export async function startVerticalSlice() {
     <canvas id="stage" aria-label="Dungeon extraction 3D vertical slice"></canvas>
     <section class="run-hud" aria-live="polite">
       <p class="run-label">DRIFT // EXTRACTION PROTOCOL</p>
-      <p id="turn-readout">TURN 001</p>
+      <p id="turn-readout">TURN 000</p>
       <p id="objective-readout">OBJECTIVE: RECOVER THE RELIC</p>
+      <p id="loot-readout">LOOT: 0 CR // LOAD: 0 KG</p>
+      <p id="stash-readout">STASH: 0 CR // EXTRACT TO BANK</p>
+      <p id="pressure-readout">THREAT: 0% // NOISE: 0</p>
+      <p id="echo-readout">ECHO: SILENT</p>
+      <p id="visibility-readout">TORCH: ON // SIGHT: 8M</p>
       <p id="message-readout">The air is still. Move carefully.</p>
     </section>
     <section class="run-help">
-      <p>W / S: MOVE &nbsp; Q / E: TURN</p>
+      <p>W / S: MOVE &nbsp; Q / E: TURN &nbsp; F: TORCH &nbsp; U: UPGRADES</p>
       <p>Each action advances the dungeon.</p>
       <p id="backend-readout"></p>
+    </section>
+    <section id="upgrade-panel" class="upgrade-panel" hidden aria-label="Upgrade terminal">
+      <p class="run-label">FIELD WORKBENCH // NEXT RUN</p>
+      <p id="upgrade-balance"></p>
+      <div id="upgrade-options"></div>
+      <p class="upgrade-close">U / ESC: CLOSE</p>
     </section>`;
     const canvas = requireElement('#stage');
     const hud = {
         turn: requireElement('#turn-readout'),
         objective: requireElement('#objective-readout'),
+        loot: requireElement('#loot-readout'),
+        stash: requireElement('#stash-readout'),
+        pressure: requireElement('#pressure-readout'),
+        echo: requireElement('#echo-readout'),
+        visibility: requireElement('#visibility-readout'),
         message: requireElement('#message-readout'),
         backend: requireElement('#backend-readout'),
     };
+    const upgradePanel = requireElement('#upgrade-panel');
+    const upgradeBalance = requireElement('#upgrade-balance');
+    const upgradeOptions = requireElement('#upgrade-options');
+    let progression = loadProgression();
+    const torchSight = getTorchSight(progression);
+    const cargoNoiseReduction = getCargoNoiseReduction(progression);
+    const carryCapacity = getCarryCapacity(progression);
+    let upgradePanelOpen = false;
     const { renderer, backend, reason } = await createRenderer(canvas, {
         maxDevicePixelRatio: 1.75,
         directionalShadows: true,
@@ -53,43 +90,82 @@ export async function startVerticalSlice() {
     addEventListener('resize', () => renderer.resize());
     const environment = createEnvironment({
         directionalDir: [0.25, 0.7, -0.3],
-        directionalColor: [0.58, 0.72, 0.64],
-        ambient: [0.1, 0.15, 0.12],
-        ambientGround: [0.025, 0.04, 0.032],
-        emissiveGain: 1.75,
+        directionalColor: [0.08, 0.11, 0.1],
+        ambient: [0.012, 0.018, 0.015],
+        ambientGround: [0.004, 0.006, 0.005],
+        emissiveGain: 0.5,
         nightFactor: 1,
         fogColor: [0.012, 0.025, 0.02],
         fogDensity: 0.012,
         fogHeightFalloff: 0.04,
         fogBaseY: 0,
     });
-    const world = renderer.createMesh(buildWorld().build());
-    const relic = renderer.createMesh(buildRelic().build());
-    const extraction = renderer.createMesh(buildExtraction().build());
-    const fallbackWorld = new SceneNode();
-    fallbackWorld.setPosition(MAP_X_OFFSET, 0, 0);
-    fallbackWorld.updateWorld();
+    const dungeon = generateDungeon({ width: 20, height: 16, targetRooms: 12, minRoomSize: 4, maxRoomSize: 6 }, RUN_SEED);
+    const dungeonMeshes = buildDungeonMeshes(dungeon);
+    const floor = renderer.createMesh(dungeonMeshes.floor);
+    const walls = renderer.createMesh(dungeonMeshes.walls);
+    const [floorTexture, wallTexture, relicTexture, extractionTexture, documentLootTexture, sampleLootTexture, componentLootTexture, artifactLootTexture] = await Promise.all([
+        loadSurfaceTexture(renderer, floorTextureUrl),
+        loadSurfaceTexture(renderer, wallTextureUrl),
+        loadSurfaceTexture(renderer, relicTextureUrl, 'clamp'),
+        loadSurfaceTexture(renderer, extractionTextureUrl, 'clamp'),
+        loadSurfaceTexture(renderer, documentLootTextureUrl, 'clamp'),
+        loadSurfaceTexture(renderer, sampleLootTextureUrl, 'clamp'),
+        loadSurfaceTexture(renderer, componentLootTextureUrl, 'clamp'),
+        loadSurfaceTexture(renderer, artifactLootTextureUrl, 'clamp'),
+    ]);
+    const relicPosition = pointToWorld(dungeon, dungeon.objective);
+    const extractionPosition = pointToWorld(dungeon, dungeon.extraction);
+    const startPosition = pointToWorld(dungeon, dungeon.playerStart);
+    const lootSpawns = placeRunLoot(dungeon, RUN_SEED);
+    const relicPedestal = renderer.createMesh(buildRelicPedestal().build());
+    const relicCore = renderer.createMesh(buildRelicCore().build());
+    const extractionFrame = renderer.createMesh(buildExtractionFrame().build());
+    const extractionLocked = renderer.createMesh(buildExtractionSignal([1, 0.08, 0.05]).build());
+    const extractionReady = renderer.createMesh(buildExtractionSignal([0.1, 1, 0.45]).build());
+    const objectiveTextures = buildObjectiveTextureMeshes();
+    const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
+    const texturedExtractionHatch = renderer.createMesh(objectiveTextures.extractionHatch);
+    const lootProps = buildLootPropMeshes();
+    const lootMeshes = {
+        document: renderer.createMesh(lootProps.document),
+        sample: renderer.createMesh(lootProps.sample),
+        component: renderer.createMesh(lootProps.component),
+        artifact: renderer.createMesh(lootProps.artifact),
+    };
+    const lootTextures = {
+        document: documentLootTexture,
+        sample: sampleLootTexture,
+        component: componentLootTexture,
+        artifact: artifactLootTexture,
+    };
     const identity = new SceneNode();
     identity.updateWorld();
+    const relicPedestalNode = new SceneNode();
+    relicPedestalNode.setPosition(relicPosition.x, 0, relicPosition.z);
     const relicNode = new SceneNode();
-    relicNode.setPosition(RELIC_POSITION.x, 0.65, RELIC_POSITION.z);
+    relicNode.setPosition(relicPosition.x, 0.65, relicPosition.z);
     const extractionNode = new SceneNode();
-    extractionNode.setPosition(EXTRACTION_POSITION.x, 0.05, EXTRACTION_POSITION.z);
-    const texturedWorld = new DrftLoader(renderer, {
-        anisotropy: 4,
-        outline: false,
-        revealSec: 0.12,
-        textureWrap: 'repeat',
+    extractionNode.setPosition(extractionPosition.x, 0.05, extractionPosition.z);
+    const lootNodes = lootSpawns.map((loot) => {
+        const position = pointToWorld(dungeon, loot.point);
+        const node = new SceneNode();
+        node.setPosition(position.x, 0, position.z);
+        return node;
     });
-    void texturedWorld.load('/assets/textured-environment.drft', { footprint: 36, height: 4, baseY: -0.4 });
     const camera = new Camera();
-    const player = { x: MAP_X_OFFSET, z: 0 };
+    const player = { x: startPosition.x, z: startPosition.z };
     let facing = 1;
-    let turn = 1;
+    const simulation = new RunSimulation(RUN_SEED);
     let hasRelic = false;
     let completed = false;
+    let lootValue = 0;
+    let lootWeight = 0;
+    const collectedLoot = new Set();
+    let torchOn = true;
     let relicSpin = 0;
     let previousRelicSpin = 0;
+    const lightBuffer = createPointLightBuffer();
     const updateCamera = () => {
         const [dx, dz] = CARDINALS[facing];
         camera.position[0] = player.x;
@@ -97,17 +173,62 @@ export async function startVerticalSlice() {
         camera.position[2] = player.z;
         camera.lookAt(player.x + dx * 6, PLAYER_HEIGHT, player.z + dz * 6);
     };
-    const advanceTurn = (message) => {
-        turn += 1;
-        hud.turn.textContent = `TURN ${String(turn).padStart(3, '0')}`;
-        hud.message.textContent = message;
+    const updateStash = () => {
+        hud.stash.textContent = `STASH: ${progression.credits} CR // EXTRACT TO BANK`;
+    };
+    const renderUpgradePanel = () => {
+        upgradeBalance.textContent = `AVAILABLE: ${progression.credits} CR`;
+        upgradeOptions.innerHTML = Object.keys(UPGRADE_DEFINITIONS).map((key) => {
+            const definition = UPGRADE_DEFINITIONS[key];
+            const level = progression.upgrades[key];
+            const cost = definition.costs[level];
+            const status = cost === undefined ? 'MAXED' : `${cost} CR`;
+            return `<button class="upgrade-option" data-upgrade="${key}" ${cost === undefined || progression.credits < cost ? 'disabled' : ''}>
+        <span>${definition.label} // LVL ${level}/2</span><small>${definition.description}</small><strong>${status}</strong>
+      </button>`;
+        }).join('');
+    };
+    const toggleUpgradePanel = () => {
+        upgradePanelOpen = !upgradePanelOpen;
+        upgradePanel.hidden = !upgradePanelOpen;
+        if (upgradePanelOpen)
+            renderUpgradePanel();
+    };
+    updateStash();
+    upgradeOptions.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-upgrade]');
+        if (button === null)
+            return;
+        const next = buyUpgrade(progression, button.dataset.upgrade);
+        if (next === null)
+            return;
+        progression = next;
+        saveProgression(progression);
+        updateStash();
+        renderUpgradePanel();
+    });
+    const advanceTurn = (action, message) => {
+        const event = simulation.advance(action, message, lootWeight, cargoNoiseReduction);
+        const pulse = propagateNoise(dungeon, worldToPoint(dungeon, player.x, player.z), event.noise, event.noiseLevel);
+        hud.turn.textContent = `TURN ${String(event.turn).padStart(3, '0')}`;
+        hud.pressure.textContent = `THREAT: ${event.pressure}% // NOISE: ${event.noiseLevel}`;
+        hud.echo.textContent = pulse.intensity === 0
+            ? 'ECHO: FADING'
+            : `ECHO: ${pulse.reachedTiles} TILES // RANGE: ${pulse.radiusTiles * STEP_METRES}M`;
+        hud.message.textContent = event.message;
     };
     const act = (key) => {
         if (completed)
             return;
+        if (key === 'f') {
+            torchOn = !torchOn;
+            hud.visibility.textContent = torchOn ? `TORCH: ON // SIGHT: ${torchSight}M` : 'TORCH: OFF // SIGHT: 2M';
+            advanceTurn('torch', torchOn ? 'The torch wakes with a dry electrical click.' : 'You kill the torch. The dark closes around you.');
+            return;
+        }
         if (key === 'q' || key === 'e') {
             facing = (facing + (key === 'q' ? 3 : 1)) % CARDINALS.length;
-            advanceTurn('Somewhere beyond the walls, metal shifts against stone.');
+            advanceTurn('turn', 'Somewhere beyond the walls, metal shifts against stone.');
             return;
         }
         const direction = key === 'w' ? 1 : key === 's' ? -1 : 0;
@@ -115,28 +236,50 @@ export async function startVerticalSlice() {
             return;
         const [dx, dz] = CARDINALS[facing];
         const next = { x: player.x + dx * STEP_METRES * direction, z: player.z + dz * STEP_METRES * direction };
-        if (!isWalkable(next)) {
-            advanceTurn('The way is sealed. The sound of your attempt travels farther than it should.');
+        if (!isWalkable(dungeon, next)) {
+            advanceTurn('blocked', 'The way is sealed. The sound of your attempt travels farther than it should.');
             return;
         }
         player.x = next.x;
         player.z = next.z;
-        advanceTurn('Your footsteps fade into the ventilation hum.');
-        if (!hasRelic && distance(player, RELIC_POSITION) < 1.2) {
+        advanceTurn('move', 'Your footsteps fade into the ventilation hum.');
+        const recoveredLoot = lootSpawns.find((loot) => !collectedLoot.has(loot.id) && distance(player, pointToWorld(dungeon, loot.point)) < 1.2);
+        if (recoveredLoot !== undefined) {
+            if (lootWeight + recoveredLoot.weight > carryCapacity) {
+                hud.message.textContent = `LOAD LIMIT ${carryCapacity} KG. DROP CARGO OR LEAVE ${recoveredLoot.name.toUpperCase()}.`;
+                return;
+            }
+            collectedLoot.add(recoveredLoot.id);
+            lootValue += recoveredLoot.value;
+            lootWeight += recoveredLoot.weight;
+            hud.loot.textContent = `LOOT: ${lootValue} CR // LOAD: ${lootWeight} KG`;
+            hud.message.textContent = `SECURED: ${recoveredLoot.name.toUpperCase()} // +${recoveredLoot.value} CR // HEAVIER STEPS`;
+        }
+        if (!hasRelic && distance(player, relicPosition) < 1.2) {
             hasRelic = true;
             hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION';
             hud.message.textContent = 'RELIC SECURED. The extraction beacon is now active.';
         }
-        if (hasRelic && distance(player, EXTRACTION_POSITION) < 1.2) {
+        if (hasRelic && distance(player, extractionPosition) < 1.2) {
             completed = true;
+            progression = bankCredits(progression, lootValue);
+            saveProgression(progression);
+            hud.stash.textContent = `STASH: ${progression.credits} CR // RUN BANKED`;
             hud.objective.textContent = 'EXTRACTION COMPLETE';
-            hud.message.textContent = `RUN CLEARED IN ${turn} TURNS. Press reload to begin again.`;
+            hud.message.textContent = `EXTRACTED ${lootValue} CR IN ${simulation.turn} TURNS. Press reload to begin again.`;
         }
     };
     addEventListener('keydown', (event) => {
         const key = event.key.toLowerCase();
+        if (key === 'u' || key === 'escape') {
+            if (key === 'u' || upgradePanelOpen)
+                toggleUpgradePanel();
+            return;
+        }
+        if (upgradePanelOpen)
+            return;
         const mapped = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'q' : key === 'arrowright' ? 'e' : key;
-        if (mapped === 'w' || mapped === 's' || mapped === 'q' || mapped === 'e') {
+        if (mapped === 'w' || mapped === 's' || mapped === 'q' || mapped === 'e' || mapped === 'f') {
             event.preventDefault();
             act(mapped);
         }
@@ -146,80 +289,134 @@ export async function startVerticalSlice() {
         simulate(dt) {
             previousRelicSpin = relicSpin;
             relicSpin += dt * 1.4;
-            texturedWorld.update(dt);
         },
         render(alpha) {
             const interpolatedSpin = previousRelicSpin + (relicSpin - previousRelicSpin) * alpha;
             relicNode.setRotationAxisAngle(0, 1, 0, interpolatedSpin);
+            relicPedestalNode.updateWorld();
             relicNode.updateWorld();
             extractionNode.updateWorld();
+            for (const node of lootNodes)
+                node.updateWorld();
             updateCamera();
             camera.updateMatrices(canvas.height > 0 ? canvas.width / canvas.height : 1);
+            const lights = torchOn
+                ? [{
+                        x: player.x,
+                        y: PLAYER_HEIGHT - 0.2,
+                        z: player.z,
+                        r: 4.8,
+                        g: 4.5,
+                        b: 3.8,
+                        radius: torchSight,
+                        flicker: 0,
+                        shadowNear: 0.15,
+                        sourceRadius: 0.08,
+                    }]
+                : [];
+            if (!hasRelic) {
+                lights.push({
+                    x: relicPosition.x,
+                    y: 1.5,
+                    z: relicPosition.z,
+                    r: 0.3,
+                    g: 1.2,
+                    b: 0.95,
+                    radius: 3.2,
+                    flicker: 0,
+                    shadowNear: 0.1,
+                    sourceRadius: 0.06,
+                });
+            }
+            lights.push({
+                x: extractionPosition.x,
+                y: 0.25,
+                z: extractionPosition.z,
+                r: hasRelic ? 0.15 : 1.05,
+                g: hasRelic ? 0.9 : 0.05,
+                b: hasRelic ? 0.35 : 0.03,
+                radius: 2.4,
+                flicker: 0,
+                shadowNear: 0.1,
+                sourceRadius: 0.05,
+            });
+            selectPointLights(lights, player.x, PLAYER_HEIGHT, player.z, lightBuffer, 0);
+            environment.lightCount = lightBuffer.count;
+            environment.lightPositions = lightBuffer.positions;
+            environment.lightColors = lightBuffer.colors;
+            environment.lightRadii = lightBuffer.radii;
+            environment.lightSourceRadii = lightBuffer.sourceRadii;
+            environment.lightWeights = lightBuffer.weights;
+            environment.activeLightWorldIndices = lightBuffer.sourceIndex;
             renderer.beginFrame([0.004, 0.009, 0.007]);
             renderer.bindMeshPass(camera, environment);
-            if (texturedWorld.parts.length === 0) {
-                renderer.drawMesh(world, fallbackWorld.worldMatrix);
-            }
-            else {
-                const textures = texturedWorld.textures;
-                for (const part of texturedWorld.parts) {
-                    renderer.setSurfaceTexture(part.albedo >= 0 ? (textures?.at(part.albedo) ?? null) : null);
-                    renderer.setSurfaceReflectivity(part.reflectivity);
-                    renderer.drawMesh(part.mesh, identity.worldMatrix);
-                }
+            renderer.setSurfaceTexture(floorTexture, 1.4, 1.4);
+            renderer.drawMesh(floor, identity.worldMatrix);
+            renderer.setSurfaceTexture(wallTexture, 1, 1.8);
+            renderer.drawMesh(walls, identity.worldMatrix);
+            renderer.setSurfaceTexture(null);
+            if (!hasRelic) {
+                renderer.drawMesh(relicPedestal, relicPedestalNode.worldMatrix);
+                renderer.setSurfaceTexture(relicTexture);
+                renderer.drawMesh(relicTexturedPedestal, relicPedestalNode.worldMatrix);
                 renderer.setSurfaceTexture(null);
-                renderer.setSurfaceReflectivity(0);
+                renderer.drawMesh(relicCore, relicNode.worldMatrix);
             }
-            if (!hasRelic)
-                renderer.drawMesh(relic, relicNode.worldMatrix);
-            renderer.drawMesh(extraction, extractionNode.worldMatrix);
+            for (let index = 0; index < lootSpawns.length; index += 1) {
+                const loot = lootSpawns[index];
+                if (!collectedLoot.has(loot.id)) {
+                    renderer.setSurfaceTexture(lootTextures[loot.kind]);
+                    renderer.drawMesh(lootMeshes[loot.kind], lootNodes[index].worldMatrix);
+                }
+            }
+            renderer.setSurfaceTexture(null);
+            renderer.drawMesh(extractionFrame, extractionNode.worldMatrix);
+            renderer.setSurfaceTexture(extractionTexture);
+            renderer.drawMesh(texturedExtractionHatch, extractionNode.worldMatrix);
+            renderer.setSurfaceTexture(null);
+            renderer.drawMesh(hasRelic ? extractionReady : extractionLocked, extractionNode.worldMatrix);
             renderer.endFrame();
         },
     });
 }
-function buildWorld() {
+function buildRelicPedestal() {
     const mesh = new MeshBuilder();
-    const floor = [0.11, 0.15, 0.13];
-    const wall = [0.18, 0.27, 0.22];
-    const trim = [0.05, 0.58, 0.32];
-    mesh.addBox([0, -0.2, 0], [6, 0.2, 5], floor);
-    mesh.addBox([11, -0.2, 0], [5, 0.2, 1.5], floor);
-    mesh.addBox([23, -0.2, 0], [7, 0.2, 6], floor);
-    addRoomWalls(mesh, 0, 0, 6, 5, wall, trim, 'east');
-    addRoomWalls(mesh, 23, 0, 7, 6, wall, trim, 'west');
-    mesh.addBox([11, 1.8, -1.5], [5, 1.8, 0.18], wall);
-    mesh.addBox([11, 1.8, 1.5], [5, 1.8, 0.18], wall);
-    mesh.addBox([11, 3.55, 0], [5, 0.1, 1.5], trim);
+    mesh.addCylinder([0, 0.12, 0], 0.78, 0.12, 'y', [0.08, 0.12, 0.11], 0, 12, 0.2);
+    mesh.addCylinder([0, 0.42, 0], 0.42, 0.22, 'y', [0.13, 0.2, 0.18], 0, 8, 0.35);
+    mesh.addBox([0.43, 0.66, 0], [0.05, 0.22, 0.05], [0.12, 0.55, 0.4], 0.15, 0.5);
+    mesh.addBox([-0.43, 0.66, 0], [0.05, 0.22, 0.05], [0.12, 0.55, 0.4], 0.15, 0.5);
+    mesh.addBox([0, 0.66, 0.43], [0.05, 0.22, 0.05], [0.12, 0.55, 0.4], 0.15, 0.5);
+    mesh.addBox([0, 0.66, -0.43], [0.05, 0.22, 0.05], [0.12, 0.55, 0.4], 0.15, 0.5);
     return mesh;
 }
-function addRoomWalls(mesh, x, z, halfWidth, halfDepth, wall, trim, doorway) {
-    mesh.addBox([x, 1.8, z - halfDepth], [halfWidth, 1.8, 0.18], wall);
-    mesh.addBox([x, 1.8, z + halfDepth], [halfWidth, 1.8, 0.18], wall);
-    const closedX = doorway === 'east' ? x - halfWidth : x + halfWidth;
-    mesh.addBox([closedX, 1.8, z], [0.18, 1.8, halfDepth], wall);
-    const openX = doorway === 'east' ? x + halfWidth : x - halfWidth;
-    mesh.addBox([openX, 1.8, z - (halfDepth + 1.5) / 2], [0.18, 1.8, (halfDepth - 1.5) / 2], wall);
-    mesh.addBox([openX, 1.8, z + (halfDepth + 1.5) / 2], [0.18, 1.8, (halfDepth - 1.5) / 2], wall);
-    mesh.addBox([x, 3.55, z], [halfWidth, 0.1, halfDepth], trim);
-}
-function buildRelic() {
+function buildRelicCore() {
     const mesh = new MeshBuilder();
-    mesh.addBox([0, 0, 0], [0.35, 0.5, 0.35], [0.1, 1, 0.55]);
-    mesh.addBox([0, 0.55, 0], [0.15, 0.15, 0.15], [0.75, 1, 0.85]);
+    mesh.addCylinder([0, 1.05, 0], 0.18, 0.42, 'y', [0.08, 0.95, 0.68], 1, 6, 0.65);
+    mesh.addSphere([0, 1.48, 0], 0.22, [0.3, 1, 0.82], 1, 12, 6);
     return mesh;
 }
-function buildExtraction() {
+function buildExtractionFrame() {
     const mesh = new MeshBuilder();
-    mesh.addBox([0, 0, 0], [0.8, 0.04, 0.8], [0.08, 0.9, 0.42]);
-    mesh.addBox([0, 0.08, 0], [0.35, 0.04, 0.35], [0.4, 1, 0.72]);
+    mesh.addCylinder([0, 0.06, 0], 1.25, 0.06, 'y', [0.1, 0.13, 0.12], 0, 12, 0.55);
+    mesh.addCylinder([0, 0.13, 0], 0.88, 0.05, 'y', [0.025, 0.035, 0.03], 0, 12, 0.2);
+    mesh.addBox([0.98, 0.22, 0], [0.1, 0.13, 0.25], [0.22, 0.28, 0.24], 0, 0.5);
+    mesh.addBox([-0.98, 0.22, 0], [0.1, 0.13, 0.25], [0.22, 0.28, 0.24], 0, 0.5);
+    mesh.addBox([0, 0.22, 0.98], [0.25, 0.13, 0.1], [0.22, 0.28, 0.24], 0, 0.5);
+    mesh.addBox([0, 0.22, -0.98], [0.25, 0.13, 0.1], [0.22, 0.28, 0.24], 0, 0.5);
     return mesh;
 }
-function isWalkable(position) {
-    const localX = position.x - MAP_X_OFFSET;
-    const inFirstRoom = localX >= -5 && localX <= 5 && position.z >= -4 && position.z <= 4;
-    const inCorridor = localX >= 5 && localX <= 17 && position.z >= -1 && position.z <= 1;
-    const inSecondRoom = localX >= 17 && localX <= 29 && position.z >= -5 && position.z <= 5;
-    return inFirstRoom || inCorridor || inSecondRoom;
+function buildExtractionSignal(color) {
+    const mesh = new MeshBuilder();
+    mesh.addCylinder([0, 0.2, 0], 0.46, 0.025, 'y', color, 1, 12, 0.2);
+    mesh.addBox([0, 0.31, 0.74], [0.18, 0.04, 0.05], color, 1);
+    mesh.addBox([0, 0.31, -0.74], [0.18, 0.04, 0.05], color, 1);
+    mesh.addBox([0.74, 0.31, 0], [0.05, 0.04, 0.18], color, 1);
+    mesh.addBox([-0.74, 0.31, 0], [0.05, 0.04, 0.18], color, 1);
+    return mesh;
+}
+function isWalkable(dungeon, position) {
+    const point = worldToPoint(dungeon, position.x, position.z);
+    return dungeon.tiles[point.y]?.[point.x] !== undefined && dungeon.tiles[point.y][point.x] !== 'wall';
 }
 function distance(a, b) {
     return Math.hypot(a.x - b.x, a.z - b.z);
@@ -229,4 +426,11 @@ function requireElement(selector) {
     if (element === null)
         throw new Error(`Missing required element: ${selector}`);
     return element;
+}
+async function loadSurfaceTexture(renderer, url, wrap = 'repeat') {
+    const response = await fetch(url);
+    if (!response.ok)
+        throw new Error(`Could not load dungeon texture: ${url}`);
+    const bitmap = await createImageBitmap(await response.blob());
+    return renderer.createSurfaceTexture(bitmap, { anisotropy: 4, colorSpace: 'srgb', wrap });
 }

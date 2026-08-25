@@ -121,3 +121,49 @@ canvas {
   color: #72d999;
   min-height: 3.2em;
 }
+
+.upgrade-panel {
+  position: fixed;
+  z-index: 3;
+  width: min(31rem, calc(100vw - 2rem));
+  padding: 1.4rem;
+  color: #d8ffe5;
+  background: linear-gradient(145deg, rgba(6, 24, 16, 0.97), rgba(1, 7, 4, 0.98));
+  border: 1px solid rgba(125, 255, 155, 0.4);
+  box-shadow: 0 0 42px rgba(58, 255, 149, 0.18), 0 24px 60px rgba(0, 0, 0, 0.7);
+}
+
+.upgrade-option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.3rem 1rem;
+  width: 100%;
+  margin-top: 0.7rem;
+  padding: 0.8rem;
+  color: #d8ffe5;
+  font: inherit;
+  text-align: left;
+  background: rgba(78, 159, 102, 0.1);
+  border: 1px solid rgba(125, 255, 155, 0.24);
+  cursor: pointer;
+}
+
+.upgrade-option:hover:not(:disabled) {
+  background: rgba(78, 159, 102, 0.24);
+}
+
+.upgrade-option:disabled {
+  color: rgba(216, 255, 229, 0.38);
+  cursor: not-allowed;
+}
+
+.upgrade-option small {
+  grid-column: 1 / -1;
+  color: rgba(169, 251, 201, 0.72);
+}
+
+.upgrade-close {
+  margin: 1rem 0 0;
+  color: rgba(169, 251, 201, 0.6);
+  font-size: 0.75rem;
+}
