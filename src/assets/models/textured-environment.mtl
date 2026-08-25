@@ -1,0 +1,7 @@
+newmtl floor
+Kd 1 1 1
+map_Kd ../textures/industrial-floor-albedo.png
+
+newmtl wall
+Kd 1 1 1
+map_Kd ../textures/industrial-wall-albedo.png

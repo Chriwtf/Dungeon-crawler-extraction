@@ -6,9 +6,13 @@ import {
   createRenderer,
   startLoop,
 } from '@driftengine/core';
+import { DrftLoader } from '@driftengine/assets';
 
 const STEP_METRES = 2;
 const PLAYER_HEIGHT = 1.65;
+const MAP_X_OFFSET = -12;
+const RELIC_POSITION = { x: 14, z: 0 };
+const EXTRACTION_POSITION = { x: -16, z: 0 };
 const CARDINALS = [
   [0, -1],
   [1, 0],
@@ -64,6 +68,8 @@ export async function startVerticalSlice(): Promise<void> {
     hdrScene: true,
     bloom: 0.35,
     bloomThreshold: 0.6,
+    outputTransform: 'aces',
+    outputExposure: 1.65,
   });
   hud.backend.textContent = `${backend.toUpperCase()} // ${reason}`;
   renderer.resize();
@@ -71,13 +77,13 @@ export async function startVerticalSlice(): Promise<void> {
 
   const environment = createEnvironment({
     directionalDir: [0.25, 0.7, -0.3],
-    directionalColor: [0.45, 0.55, 0.5],
-    ambient: [0.04, 0.06, 0.05],
-    ambientGround: [0.01, 0.015, 0.012],
-    emissiveGain: 1.4,
+    directionalColor: [0.58, 0.72, 0.64],
+    ambient: [0.1, 0.15, 0.12],
+    ambientGround: [0.025, 0.04, 0.032],
+    emissiveGain: 1.75,
     nightFactor: 1,
     fogColor: [0.012, 0.025, 0.02],
-    fogDensity: 0.055,
+    fogDensity: 0.012,
     fogHeightFalloff: 0.04,
     fogBaseY: 0,
   });
@@ -85,16 +91,27 @@ export async function startVerticalSlice(): Promise<void> {
   const world = renderer.createMesh(buildWorld().build());
   const relic = renderer.createMesh(buildRelic().build());
   const extraction = renderer.createMesh(buildExtraction().build());
+  const fallbackWorld = new SceneNode();
+  fallbackWorld.setPosition(MAP_X_OFFSET, 0, 0);
+  fallbackWorld.updateWorld();
   const identity = new SceneNode();
   identity.updateWorld();
 
   const relicNode = new SceneNode();
-  relicNode.setPosition(26, 0.65, 0);
+  relicNode.setPosition(RELIC_POSITION.x, 0.65, RELIC_POSITION.z);
   const extractionNode = new SceneNode();
-  extractionNode.setPosition(-4, 0.05, 0);
+  extractionNode.setPosition(EXTRACTION_POSITION.x, 0.05, EXTRACTION_POSITION.z);
+
+  const texturedWorld = new DrftLoader(renderer, {
+    anisotropy: 4,
+    outline: false,
+    revealSec: 0.12,
+    textureWrap: 'repeat',
+  });
+  void texturedWorld.load('/assets/textured-environment.drft', { footprint: 36, height: 4, baseY: -0.4 });
 
   const camera = new Camera();
-  const player: Position = { x: 0, z: 0 };
+  const player: Position = { x: MAP_X_OFFSET, z: 0 };
   let facing = 1;
   let turn = 1;
   let hasRelic = false;
@@ -138,12 +155,12 @@ export async function startVerticalSlice(): Promise<void> {
     player.z = next.z;
     advanceTurn('Your footsteps fade into the ventilation hum.');
 
-    if (!hasRelic && distance(player, { x: 26, z: 0 }) < 1.2) {
+    if (!hasRelic && distance(player, RELIC_POSITION) < 1.2) {
       hasRelic = true;
       hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION';
       hud.message.textContent = 'RELIC SECURED. The extraction beacon is now active.';
     }
-    if (hasRelic && distance(player, { x: -4, z: 0 }) < 1.2) {
+    if (hasRelic && distance(player, EXTRACTION_POSITION) < 1.2) {
       completed = true;
       hud.objective.textContent = 'EXTRACTION COMPLETE';
       hud.message.textContent = `RUN CLEARED IN ${turn} TURNS. Press reload to begin again.`;
@@ -164,6 +181,7 @@ export async function startVerticalSlice(): Promise<void> {
     simulate(dt) {
       previousRelicSpin = relicSpin;
       relicSpin += dt * 1.4;
+      texturedWorld.update(dt);
     },
     render(alpha) {
       const interpolatedSpin = previousRelicSpin + (relicSpin - previousRelicSpin) * alpha;
@@ -175,7 +193,18 @@ export async function startVerticalSlice(): Promise<void> {
 
       renderer.beginFrame([0.004, 0.009, 0.007]);
       renderer.bindMeshPass(camera, environment);
-      renderer.drawMesh(world, identity.worldMatrix);
+      if (texturedWorld.parts.length === 0) {
+        renderer.drawMesh(world, fallbackWorld.worldMatrix);
+      } else {
+        const textures = texturedWorld.textures;
+        for (const part of texturedWorld.parts) {
+          renderer.setSurfaceTexture(part.albedo >= 0 ? (textures?.at(part.albedo) ?? null) : null);
+          renderer.setSurfaceReflectivity(part.reflectivity);
+          renderer.drawMesh(part.mesh, identity.worldMatrix);
+        }
+        renderer.setSurfaceTexture(null);
+        renderer.setSurfaceReflectivity(0);
+      }
       if (!hasRelic) renderer.drawMesh(relic, relicNode.worldMatrix);
       renderer.drawMesh(extraction, extractionNode.worldMatrix);
       renderer.endFrame();
@@ -185,9 +214,9 @@ export async function startVerticalSlice(): Promise<void> {
 
 function buildWorld(): MeshBuilder {
   const mesh = new MeshBuilder();
-  const floor: [number, number, number] = [0.07, 0.1, 0.085];
-  const wall: [number, number, number] = [0.12, 0.18, 0.15];
-  const trim: [number, number, number] = [0.04, 0.42, 0.24];
+  const floor: [number, number, number] = [0.11, 0.15, 0.13];
+  const wall: [number, number, number] = [0.18, 0.27, 0.22];
+  const trim: [number, number, number] = [0.05, 0.58, 0.32];
 
   mesh.addBox([0, -0.2, 0], [6, 0.2, 5], floor);
   mesh.addBox([11, -0.2, 0], [5, 0.2, 1.5], floor);
@@ -236,9 +265,10 @@ function buildExtraction(): MeshBuilder {
 }
 
 function isWalkable(position: Position): boolean {
-  const inFirstRoom = position.x >= -5 && position.x <= 5 && position.z >= -4 && position.z <= 4;
-  const inCorridor = position.x >= 5 && position.x <= 17 && position.z >= -1 && position.z <= 1;
-  const inSecondRoom = position.x >= 17 && position.x <= 29 && position.z >= -5 && position.z <= 5;
+  const localX = position.x - MAP_X_OFFSET;
+  const inFirstRoom = localX >= -5 && localX <= 5 && position.z >= -4 && position.z <= 4;
+  const inCorridor = localX >= 5 && localX <= 17 && position.z >= -1 && position.z <= 1;
+  const inSecondRoom = localX >= 17 && localX <= 29 && position.z >= -5 && position.z <= 5;
   return inFirstRoom || inCorridor || inSecondRoom;
 }
 

@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "assets:environment": "node scripts/build-textured-environment.mjs"
   },
   "dependencies": {
+    "@driftengine/assets": "file:../driftengine/packages/assets",
     "@driftengine/core": "file:../driftengine/packages/core",
     "@driftengine/drft": "file:../driftengine/packages/drft",
     "gl-matrix": "^3.4.3",
