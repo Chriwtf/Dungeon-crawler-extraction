@@ -15,7 +15,7 @@ import { TILE_METRES, buildDungeonMeshes, pointToWorld, worldToPoint } from './P
 import { buildObjectiveTextureMeshes } from './ObjectiveTextureMeshes';
 import { buildLootPropMeshes } from './LootProps3d';
 import { buildDungeonDoor } from './DoorProps3d';
-import { buildEnemyMeshes } from './EnemyProps3d';
+import { buildApexMesh, buildEnemyMeshes } from './EnemyProps3d';
 import { buildContainerMeshes } from './ContainerProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
@@ -177,7 +177,7 @@ export async function startVerticalSlice() {
         crawler: renderer.createMesh(enemyProps.crawler),
         guard: renderer.createMesh(enemyProps.guard),
     };
-    const apexMesh = renderer.createMesh(buildApex().build({ planarUvs: true }));
+    const apexMesh = renderer.createMesh(buildApexMesh());
     const objectiveTextures = buildObjectiveTextureMeshes();
     const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
     const texturedExtractionHatch = renderer.createMesh(objectiveTextures.extractionHatch);
@@ -703,7 +703,7 @@ export async function startVerticalSlice() {
                 if (!openedContainers.has(container.id) && exploration.isVisible(container.point))
                     renderer.drawMesh(containerMeshes[container.kind], containerNodes[index].worldMatrix);
             }
-            renderer.setSurfaceTexture(apexTexture, 0.45, 0.45);
+            renderer.setSurfaceTexture(apexTexture, 1, 1);
             if (apexVisible && exploration.isVisible(apexPosition))
                 renderer.drawMesh(apexMesh, apexNode.worldMatrix);
             for (const enemy of enemies.snapshots()) {
@@ -711,7 +711,7 @@ export async function startVerticalSlice() {
                     continue;
                 const node = enemyNodes.get(enemy.id);
                 if (node !== undefined) {
-                    renderer.setSurfaceTexture(enemy.kind === 'crawler' ? crawlerTexture : guardTexture, 0.55, 0.55);
+                    renderer.setSurfaceTexture(enemy.kind === 'crawler' ? crawlerTexture : guardTexture, 1, 1);
                     renderer.drawMesh(enemyMeshes[enemy.kind], node.worldMatrix);
                 }
             }
@@ -742,15 +742,6 @@ function buildRelicCore() {
     const mesh = new MeshBuilder();
     mesh.addCylinder([0, 1.05, 0], 0.18, 0.42, 'y', [0.08, 0.95, 0.68], 1, 6, 0.65);
     mesh.addSphere([0, 1.48, 0], 0.22, [0.3, 1, 0.82], 1, 12, 6);
-    return mesh;
-}
-function buildApex() {
-    const mesh = new MeshBuilder();
-    mesh.addCylinder([0, 0.92, 0], 0.2, 0.85, 'y', [0.015, 0.028, 0.022], 0, 8, 0.2);
-    mesh.addSphere([0, 1.52, 0], 0.27, [0.035, 0.07, 0.052], 0.05, 10, 6);
-    mesh.addBox([0.34, 0.95, 0], [0.05, 0.42, 0.05], [0.02, 0.06, 0.04], 0.2, 0.4);
-    mesh.addBox([-0.34, 0.95, 0], [0.05, 0.42, 0.05], [0.02, 0.06, 0.04], 0.2, 0.4);
-    mesh.addSphere([0, 1.55, 0.23], 0.055, [0.85, 0.08, 0.025], 1, 8, 5);
     return mesh;
 }
 function buildEmergencyLamp() {
