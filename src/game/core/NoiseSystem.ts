@@ -5,6 +5,7 @@ export type NoisePulse = {
   readonly intensity: number;
   readonly radiusTiles: number;
   readonly reachedTiles: number;
+  readonly audibleTiles: ReadonlySet<string>;
 };
 
 /**
@@ -13,7 +14,7 @@ export type NoisePulse = {
  */
 export function propagateNoise(dungeon: DungeonData, origin: Point, intensity: number, noiseLevel: number): NoisePulse {
   const radiusTiles = intensity === 0 ? 0 : Math.min(8, Math.max(intensity, Math.ceil(noiseLevel / 2)));
-  if (radiusTiles === 0) return { origin, intensity, radiusTiles, reachedTiles: 0 };
+  if (radiusTiles === 0) return { origin, intensity, radiusTiles, reachedTiles: 0, audibleTiles: new Set() };
 
   const queue: Array<{ point: Point; distance: number }> = [{ point: origin, distance: 0 }];
   const visited = new Set<string>([keyOf(origin)]);
@@ -35,7 +36,11 @@ export function propagateNoise(dungeon: DungeonData, origin: Point, intensity: n
     }
   }
 
-  return { origin, intensity, radiusTiles, reachedTiles };
+  return { origin, intensity, radiusTiles, reachedTiles, audibleTiles: visited };
+}
+
+export function isNoiseAudibleAt(pulse: NoisePulse, point: Point): boolean {
+  return pulse.audibleTiles.has(keyOf(point));
 }
 
 function keyOf(point: Point): string {

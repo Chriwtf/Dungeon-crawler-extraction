@@ -1,4 +1,5 @@
 import { Camera, MeshBuilder, SceneNode, createPointLightBuffer, createEnvironment, createRenderer, selectPointLights, startLoop, } from '@driftengine/core';
+import { ApexDirector } from '../game/core/ApexDirector';
 import { placeRunLoot } from '../game/core/RunLoot';
 import { propagateNoise } from '../game/core/NoiseSystem';
 import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
@@ -16,6 +17,7 @@ import sampleLootTextureUrl from '../assets/textures/loot-sample-albedo.png?url'
 import componentLootTextureUrl from '../assets/textures/loot-component-albedo.png?url';
 import artifactLootTextureUrl from '../assets/textures/loot-artifact-albedo.png?url';
 const STEP_METRES = 2;
+const EXTRACTION_RANGE = 2.1;
 const PLAYER_HEIGHT = 1.65;
 const RUN_SEED = 827491;
 const CARDINALS = [
@@ -42,11 +44,12 @@ export async function startVerticalSlice() {
       <p id="stash-readout">STASH: 0 CR // EXTRACT TO BANK</p>
       <p id="pressure-readout">THREAT: 0% // NOISE: 0</p>
       <p id="echo-readout">ECHO: SILENT</p>
+      <p id="apex-readout">STALKER: DORMANT</p>
       <p id="visibility-readout">TORCH: ON // SIGHT: 8M</p>
       <p id="message-readout">The air is still. Move carefully.</p>
     </section>
     <section class="run-help">
-      <p>W / S: MOVE &nbsp; Q / E: TURN &nbsp; F: TORCH &nbsp; U: UPGRADES</p>
+      <p>W / S: MOVE &nbsp; Q / E: TURN &nbsp; F: TORCH &nbsp; X: EXTRACT &nbsp; U: UPGRADES</p>
       <p>Each action advances the dungeon.</p>
       <p id="backend-readout"></p>
     </section>
@@ -64,6 +67,7 @@ export async function startVerticalSlice() {
         stash: requireElement('#stash-readout'),
         pressure: requireElement('#pressure-readout'),
         echo: requireElement('#echo-readout'),
+        apex: requireElement('#apex-readout'),
         visibility: requireElement('#visibility-readout'),
         message: requireElement('#message-readout'),
         backend: requireElement('#backend-readout'),
@@ -123,6 +127,7 @@ export async function startVerticalSlice() {
     const extractionFrame = renderer.createMesh(buildExtractionFrame().build());
     const extractionLocked = renderer.createMesh(buildExtractionSignal([1, 0.08, 0.05]).build());
     const extractionReady = renderer.createMesh(buildExtractionSignal([0.1, 1, 0.45]).build());
+    const apexMesh = renderer.createMesh(buildApex().build());
     const objectiveTextures = buildObjectiveTextureMeshes();
     const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
     const texturedExtractionHatch = renderer.createMesh(objectiveTextures.extractionHatch);
@@ -153,10 +158,13 @@ export async function startVerticalSlice() {
         node.setPosition(position.x, 0, position.z);
         return node;
     });
+    const apexNode = new SceneNode();
     const camera = new Camera();
     const player = { x: startPosition.x, z: startPosition.z };
     let facing = 1;
     const simulation = new RunSimulation(RUN_SEED);
+    const apex = new ApexDirector(dungeon);
+    let apexVisible = false;
     let hasRelic = false;
     let completed = false;
     let lootValue = 0;
@@ -210,12 +218,30 @@ export async function startVerticalSlice() {
     const advanceTurn = (action, message) => {
         const event = simulation.advance(action, message, lootWeight, cargoNoiseReduction);
         const pulse = propagateNoise(dungeon, worldToPoint(dungeon, player.x, player.z), event.noise, event.noiseLevel);
+        const apexEvent = apex.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, event.pressure, event.turn, torchOn);
+        const apexWorld = pointToWorld(dungeon, apexEvent.position);
+        apexNode.setPosition(apexWorld.x, 0, apexWorld.z);
+        apexVisible = apexEvent.visible;
         hud.turn.textContent = `TURN ${String(event.turn).padStart(3, '0')}`;
         hud.pressure.textContent = `THREAT: ${event.pressure}% // NOISE: ${event.noiseLevel}`;
         hud.echo.textContent = pulse.intensity === 0
             ? 'ECHO: FADING'
             : `ECHO: ${pulse.reachedTiles} TILES // RANGE: ${pulse.radiusTiles * STEP_METRES}M`;
-        hud.message.textContent = event.message;
+        hud.apex.textContent = `STALKER: ${apexEvent.mode.toUpperCase()}`;
+        hud.message.textContent = apexEvent.message ?? event.message;
+        if (apexEvent.captured) {
+            completed = true;
+            hud.objective.textContent = 'RUN LOST // CARGO ABANDONED';
+            hud.message.textContent = 'THE APEX FOUND YOU. NOTHING WAS BANKED.';
+        }
+    };
+    const completeExtraction = () => {
+        completed = true;
+        progression = bankCredits(progression, lootValue);
+        saveProgression(progression);
+        hud.stash.textContent = `STASH: ${progression.credits} CR // RUN BANKED`;
+        hud.objective.textContent = 'EXTRACTION COMPLETE';
+        hud.message.textContent = `EXTRACTED ${lootValue} CR IN ${simulation.turn} TURNS. Press reload to begin again.`;
     };
     const act = (key) => {
         if (completed)
@@ -224,6 +250,18 @@ export async function startVerticalSlice() {
             torchOn = !torchOn;
             hud.visibility.textContent = torchOn ? `TORCH: ON // SIGHT: ${torchSight}M` : 'TORCH: OFF // SIGHT: 2M';
             advanceTurn('torch', torchOn ? 'The torch wakes with a dry electrical click.' : 'You kill the torch. The dark closes around you.');
+            return;
+        }
+        if (key === 'x') {
+            if (!hasRelic) {
+                hud.message.textContent = 'EXTRACTION LOCKED. RECOVER THE RELIC FIRST.';
+            }
+            else if (distance(player, extractionPosition) > EXTRACTION_RANGE) {
+                hud.message.textContent = 'MOVE CLOSER TO THE EXTRACTION HATCH.';
+            }
+            else {
+                completeExtraction();
+            }
             return;
         }
         if (key === 'q' || key === 'e') {
@@ -242,7 +280,13 @@ export async function startVerticalSlice() {
         }
         player.x = next.x;
         player.z = next.z;
+        if (hasRelic && distance(player, extractionPosition) <= EXTRACTION_RANGE) {
+            completeExtraction();
+            return;
+        }
         advanceTurn('move', 'Your footsteps fade into the ventilation hum.');
+        if (completed)
+            return;
         const recoveredLoot = lootSpawns.find((loot) => !collectedLoot.has(loot.id) && distance(player, pointToWorld(dungeon, loot.point)) < 1.2);
         if (recoveredLoot !== undefined) {
             if (lootWeight + recoveredLoot.weight > carryCapacity) {
@@ -260,14 +304,6 @@ export async function startVerticalSlice() {
             hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION';
             hud.message.textContent = 'RELIC SECURED. The extraction beacon is now active.';
         }
-        if (hasRelic && distance(player, extractionPosition) < 1.2) {
-            completed = true;
-            progression = bankCredits(progression, lootValue);
-            saveProgression(progression);
-            hud.stash.textContent = `STASH: ${progression.credits} CR // RUN BANKED`;
-            hud.objective.textContent = 'EXTRACTION COMPLETE';
-            hud.message.textContent = `EXTRACTED ${lootValue} CR IN ${simulation.turn} TURNS. Press reload to begin again.`;
-        }
     };
     addEventListener('keydown', (event) => {
         const key = event.key.toLowerCase();
@@ -279,7 +315,7 @@ export async function startVerticalSlice() {
         if (upgradePanelOpen)
             return;
         const mapped = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'q' : key === 'arrowright' ? 'e' : key;
-        if (mapped === 'w' || mapped === 's' || mapped === 'q' || mapped === 'e' || mapped === 'f') {
+        if (mapped === 'w' || mapped === 's' || mapped === 'q' || mapped === 'e' || mapped === 'f' || mapped === 'x') {
             event.preventDefault();
             act(mapped);
         }
@@ -298,6 +334,7 @@ export async function startVerticalSlice() {
             extractionNode.updateWorld();
             for (const node of lootNodes)
                 node.updateWorld();
+            apexNode.updateWorld();
             updateCamera();
             camera.updateMatrices(canvas.height > 0 ? canvas.width / canvas.height : 1);
             const lights = torchOn
@@ -370,6 +407,8 @@ export async function startVerticalSlice() {
                 }
             }
             renderer.setSurfaceTexture(null);
+            if (apexVisible)
+                renderer.drawMesh(apexMesh, apexNode.worldMatrix);
             renderer.drawMesh(extractionFrame, extractionNode.worldMatrix);
             renderer.setSurfaceTexture(extractionTexture);
             renderer.drawMesh(texturedExtractionHatch, extractionNode.worldMatrix);
@@ -393,6 +432,15 @@ function buildRelicCore() {
     const mesh = new MeshBuilder();
     mesh.addCylinder([0, 1.05, 0], 0.18, 0.42, 'y', [0.08, 0.95, 0.68], 1, 6, 0.65);
     mesh.addSphere([0, 1.48, 0], 0.22, [0.3, 1, 0.82], 1, 12, 6);
+    return mesh;
+}
+function buildApex() {
+    const mesh = new MeshBuilder();
+    mesh.addCylinder([0, 0.92, 0], 0.2, 0.85, 'y', [0.015, 0.028, 0.022], 0, 8, 0.2);
+    mesh.addSphere([0, 1.52, 0], 0.27, [0.035, 0.07, 0.052], 0.05, 10, 6);
+    mesh.addBox([0.34, 0.95, 0], [0.05, 0.42, 0.05], [0.02, 0.06, 0.04], 0.2, 0.4);
+    mesh.addBox([-0.34, 0.95, 0], [0.05, 0.42, 0.05], [0.02, 0.06, 0.04], 0.2, 0.4);
+    mesh.addSphere([0, 1.55, 0.23], 0.055, [0.85, 0.08, 0.025], 1, 8, 5);
     return mesh;
 }
 function buildExtractionFrame() {
