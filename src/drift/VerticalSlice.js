@@ -17,7 +17,7 @@ import { buildApexMesh, buildEnemyMeshes } from './EnemyProps3d';
 import { buildContainerMeshes } from './ContainerProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
 import { RunAudio } from './RunAudio';
-import { animateRig, loadRiggedEnemyAssets } from './RiggedEnemyAssets';
+import { animateRig, createRiggedEnemyNode, loadRiggedEnemyAssets } from './RiggedEnemyAssets';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
 import relicTextureUrl from '../assets/textures/relic-pedestal-albedo.png?url';
@@ -233,6 +233,8 @@ export async function startVerticalSlice() {
         return node;
     });
     const apexNode = new SceneNode();
+    const apexRigNode = createRiggedEnemyNode('apex');
+    apexNode.attachChild(apexRigNode);
     const emergencyNodes = emergencyPositions.map((position) => {
         const node = new SceneNode();
         node.setPosition(position.x, 2.75, position.z);
@@ -257,12 +259,16 @@ export async function startVerticalSlice() {
     const apex = new ApexDirector(dungeon);
     const enemies = new EnemyDirector(dungeon, RUN_SEED);
     const enemyNodes = new Map();
+    const enemyRigNodes = new Map();
     const syncEnemyNodes = (snapshots) => {
         for (const enemy of snapshots) {
             let node = enemyNodes.get(enemy.id);
             if (node === undefined) {
                 node = new SceneNode();
                 enemyNodes.set(enemy.id, node);
+                const rigNode = createRiggedEnemyNode(enemy.kind);
+                node.attachChild(rigNode);
+                enemyRigNodes.set(enemy.id, rigNode);
             }
             const position = pointToWorld(dungeon, enemy.position);
             node.setPosition(position.x, 0, position.z);
@@ -768,7 +774,7 @@ export async function startVerticalSlice() {
                     renderer.setSurfaceTexture(null);
                     renderer.setSkinPalette(rigged.skeleton.palette);
                     for (const mesh of rigged.meshes)
-                        renderer.drawMesh(mesh, apexNode.worldMatrix);
+                        renderer.drawMesh(mesh, apexRigNode.worldMatrix);
                     renderer.setSkinPalette(null);
                 }
                 else {
@@ -787,8 +793,11 @@ export async function startVerticalSlice() {
                         animateRig(rigged, visualTime + enemy.id * 0.17);
                         renderer.setSurfaceTexture(null);
                         renderer.setSkinPalette(rigged.skeleton.palette);
-                        for (const mesh of rigged.meshes)
-                            renderer.drawMesh(mesh, node.worldMatrix);
+                        const rigNode = enemyRigNodes.get(enemy.id);
+                        if (rigNode !== undefined) {
+                            for (const mesh of rigged.meshes)
+                                renderer.drawMesh(mesh, rigNode.worldMatrix);
+                        }
                         renderer.setSkinPalette(null);
                     }
                     else {
