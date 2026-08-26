@@ -115,7 +115,7 @@ export const generateDungeon = (config, seed) => {
         archetype: archetypes[index],
     }));
     const connections = carveDungeonTopology(tiles, roomData, random);
-    const doors = createDoorLayout(tiles, roomData, connections, random);
+    const doors = createDoorLayout(roomData, connections, random);
     tiles[objective.y][objective.x] = 'objective';
     tiles[extraction.y][extraction.x] = 'extraction';
     return {

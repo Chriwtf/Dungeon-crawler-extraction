@@ -1,5 +1,5 @@
 import type { DungeonConnection } from './DungeonTopology';
-import type { Point, RoomData, TileGrid } from './DungeonGenerator';
+import type { Point, RoomData } from './DungeonGenerator';
 
 export type DoorState = 'open' | 'closed' | 'locked' | 'sealed' | 'secret';
 
@@ -15,14 +15,14 @@ export type DungeonDoor = {
   readonly wallOffset: Readonly<{ x: number; y: number }>;
 };
 
-export function createDoorLayout(tiles: TileGrid, rooms: readonly RoomData[], connections: readonly DungeonConnection[], random: () => number): readonly DungeonDoor[] {
+export function createDoorLayout(rooms: readonly RoomData[], connections: readonly DungeonConnection[], random: () => number): readonly DungeonDoor[] {
   const doors: DungeonDoor[] = [];
+  const roomsWithDoors = new Set<string>();
   for (const connection of connections) {
     const previous = rooms.find((room) => room.id === connection.fromRoomId);
     const room = rooms.find((candidate) => candidate.id === connection.toRoomId);
-    if (previous === undefined || room === undefined) continue;
-    const doorway = findDoorway(tiles, room, previous.center);
-    if (doorway === undefined) continue;
+    if (previous === undefined || room === undefined || connection.kind === 'shortcut' || roomsWithDoors.has(room.id)) continue;
+    const doorway = connection.doorway;
 
     doors.push({
       id: `door-${connection.id}`,
@@ -32,30 +32,10 @@ export function createDoorLayout(tiles: TileGrid, rooms: readonly RoomData[], co
       noise: 4,
       turnCost: 1,
       areas: [previous.id, room.id],
-      rotation: doorway.dx !== 0 ? 0 : Math.PI / 2,
-      wallOffset: { x: doorway.dx, y: doorway.dy },
+      rotation: doorway.rotation,
+      wallOffset: doorway.wallOffset,
     });
+    roomsWithDoors.add(room.id);
   }
   return doors;
-}
-
-function findDoorway(tiles: TileGrid, room: RoomData, origin: Point): { point: Point; dx: number; dy: number } | undefined {
-  const candidates: Array<{ point: Point; dx: number; dy: number }> = [];
-  for (let y = room.y; y < room.y + room.h; y += 1) {
-    for (let x = room.x; x < room.x + room.w; x += 1) {
-      if (x !== room.x && x !== room.x + room.w - 1 && y !== room.y && y !== room.y + room.h - 1) continue;
-      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
-        const outsideX = x + dx;
-        const outsideY = y + dy;
-        const outsideRoom = outsideX >= room.x && outsideX < room.x + room.w && outsideY >= room.y && outsideY < room.y + room.h;
-        if (outsideRoom || tiles[outsideY]?.[outsideX] === undefined || tiles[outsideY][outsideX] === 'wall') continue;
-        candidates.push({ point: { x, y }, dx, dy });
-      }
-    }
-  }
-  return candidates.sort((a, b) => distance(a.point, origin) - distance(b.point, origin))[0];
-}
-
-function distance(a: Point, b: Point): number {
-  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
