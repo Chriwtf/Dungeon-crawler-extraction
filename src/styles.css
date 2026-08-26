@@ -171,6 +171,10 @@ canvas {
   color: #ffc67a;
 }
 
+#keys-readout {
+  color: #8ee6ff;
+}
+
 @keyframes hunter-pulse {
   50% { opacity: 0.66; }
 }

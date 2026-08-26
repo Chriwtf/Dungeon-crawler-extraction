@@ -4,6 +4,7 @@ import { ApexDirector } from '../game/core/ApexDirector';
 import { DoorSystem } from '../game/core/DoorSystem';
 import { EnemyDirector } from '../game/core/EnemyDirector';
 import { PlayerCombat } from '../game/core/PlayerCombat';
+import { placeRunContainers } from '../game/core/RunContainers';
 import { placeRunLoot } from '../game/core/RunLoot';
 import { propagateNoise } from '../game/core/NoiseSystem';
 import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
@@ -15,6 +16,7 @@ import { buildObjectiveTextureMeshes } from './ObjectiveTextureMeshes';
 import { buildLootPropMeshes } from './LootProps3d';
 import { buildDungeonDoor } from './DoorProps3d';
 import { buildEnemyMeshes } from './EnemyProps3d';
+import { buildContainerMeshes } from './ContainerProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
@@ -54,6 +56,7 @@ export async function startVerticalSlice() {
       <p id="objective-readout">OBJECTIVE: RECOVER THE RELIC</p>
       <p id="loot-readout">LOOT: 0 CR // LOAD: 0 KG</p>
       <p id="stash-readout">STASH: 0 CR // EXTRACT TO BANK</p>
+      <p id="keys-readout">KEYS: NONE</p>
       <p id="health-readout">VITALS: 36 / 36 // MEDKITS: 2</p>
       <p id="pressure-readout">THREAT: 0% // NOISE: 0</p>
       <p id="echo-readout">ECHO: SILENT</p>
@@ -81,6 +84,7 @@ export async function startVerticalSlice() {
         objective: requireElement('#objective-readout'),
         loot: requireElement('#loot-readout'),
         stash: requireElement('#stash-readout'),
+        keys: requireElement('#keys-readout'),
         health: requireElement('#health-readout'),
         pressure: requireElement('#pressure-readout'),
         echo: requireElement('#echo-readout'),
@@ -142,6 +146,7 @@ export async function startVerticalSlice() {
     const extractionPosition = pointToWorld(dungeon, dungeon.extraction);
     const startPosition = pointToWorld(dungeon, dungeon.playerStart);
     const lootSpawns = placeRunLoot(dungeon, RUN_SEED);
+    const containers = placeRunContainers(dungeon);
     const emergencyPositions = selectEmergencyPositions(dungeon, 7).map((point) => pointToWorld(dungeon, point));
     const relicPedestal = renderer.createMesh(buildRelicPedestal().build());
     const relicCore = renderer.createMesh(buildRelicCore().build());
@@ -151,6 +156,11 @@ export async function startVerticalSlice() {
     const emergencyLamp = renderer.createMesh(buildEmergencyLamp().build());
     const dungeonDoor = renderer.createMesh(buildDungeonDoor().build());
     const enemyProps = buildEnemyMeshes();
+    const containerProps = buildContainerMeshes();
+    const containerMeshes = {
+        keyLocker: renderer.createMesh(containerProps.keyLocker),
+        medCache: renderer.createMesh(containerProps.medCache),
+    };
     const enemyMeshes = {
         crawler: renderer.createMesh(enemyProps.crawler.build()),
         guard: renderer.createMesh(enemyProps.guard.build()),
@@ -184,6 +194,12 @@ export async function startVerticalSlice() {
     extractionNode.setPosition(extractionPosition.x, 0.05, extractionPosition.z);
     const lootNodes = lootSpawns.map((loot) => {
         const position = pointToWorld(dungeon, loot.point);
+        const node = new SceneNode();
+        node.setPosition(position.x, 0, position.z);
+        return node;
+    });
+    const containerNodes = containers.map((container) => {
+        const position = pointToWorld(dungeon, container.point);
         const node = new SceneNode();
         node.setPosition(position.x, 0, position.z);
         return node;
@@ -243,6 +259,8 @@ export async function startVerticalSlice() {
     let lootValue = 0;
     let lootWeight = 0;
     const collectedLoot = new Set();
+    const openedContainers = new Set();
+    const keys = new Set();
     let torchOn = true;
     let relicSpin = 0;
     let previousRelicSpin = 0;
@@ -267,21 +285,25 @@ export async function startVerticalSlice() {
     const updateCombatHud = () => {
         hud.health.textContent = `VITALS: ${combat.hp} / ${combat.maxHp} // MEDKITS: ${combat.medkits}`;
     };
+    const updateKeysHud = () => {
+        hud.keys.textContent = keys.size === 0 ? 'KEYS: NONE' : `KEYS: ${[...keys].join(' // ')}`;
+    };
     const updateDoorPrompt = () => {
         const [dx, dz] = CARDINALS[facing];
         const target = worldToPoint(dungeon, player.x + dx * STEP_METRES, player.z + dz * STEP_METRES);
         const door = doorSystem.getAt(target);
-        if (door === undefined || door.state === 'open') {
-            hud.interaction.textContent = '';
+        if (door !== undefined && door.state !== 'open') {
+            hud.interaction.textContent = door.state === 'closed'
+                ? 'E - OPEN DOOR // +4 NOISE'
+                : door.state === 'locked'
+                    ? keys.has(door.requiredKey ?? '') ? 'E - UNLOCK AMBER DOOR // +4 NOISE' : `LOCKED // REQUIRES ${door.requiredKey ?? 'KEY'}`
+                    : door.state === 'sealed'
+                        ? 'SEALED'
+                        : 'UNMARKED STONE';
             return;
         }
-        hud.interaction.textContent = door.state === 'closed'
-            ? 'E - OPEN DOOR // +4 NOISE'
-            : door.state === 'locked'
-                ? `LOCKED // REQUIRES ${door.requiredKey ?? 'KEY'}`
-                : door.state === 'sealed'
-                    ? 'SEALED'
-                    : 'UNMARKED STONE';
+        const container = containers.find((candidate) => !openedContainers.has(candidate.id) && candidate.point.x === worldToPoint(dungeon, player.x, player.z).x && candidate.point.y === worldToPoint(dungeon, player.x, player.z).y);
+        hud.interaction.textContent = container === undefined ? '' : `E - OPEN ${container.kind === 'keyLocker' ? 'KEY LOCKER' : 'MEDICAL CACHE'}`;
     };
     const updateExploration = () => {
         const playerPoint = worldToPoint(dungeon, player.x, player.z);
@@ -442,12 +464,29 @@ export async function startVerticalSlice() {
         }
         if (key === 'e') {
             const [dx, dz] = CARDINALS[facing];
-            const interaction = doorSystem.interact(worldToPoint(dungeon, player.x + dx * STEP_METRES, player.z + dz * STEP_METRES));
+            const interaction = doorSystem.interact(worldToPoint(dungeon, player.x + dx * STEP_METRES, player.z + dz * STEP_METRES), keys);
             if (interaction !== undefined) {
                 if (interaction.opened)
                     advanceTurn('door', interaction.message);
                 else
                     hud.message.textContent = interaction.message;
+                updateDoorPrompt();
+                return;
+            }
+            const playerPoint = worldToPoint(dungeon, player.x, player.z);
+            const container = containers.find((candidate) => !openedContainers.has(candidate.id) && candidate.point.x === playerPoint.x && candidate.point.y === playerPoint.y);
+            if (container !== undefined) {
+                openedContainers.add(container.id);
+                if (container.kind === 'keyLocker') {
+                    keys.add(container.key ?? 'AMBER KEYCARD');
+                    updateKeysHud();
+                    advanceTurn('item', 'KEY LOCKER OPENED. AMBER KEYCARD SECURED.');
+                }
+                else {
+                    const added = combat.addMedkit();
+                    updateCombatHud();
+                    advanceTurn('item', added ? 'MEDICAL CACHE OPENED. +1 MEDKIT.' : 'MEDICAL CACHE OPENED. MEDKIT CAPACITY FULL.');
+                }
                 updateDoorPrompt();
                 return;
             }
@@ -514,6 +553,7 @@ export async function startVerticalSlice() {
     });
     updateCamera();
     updateCombatHud();
+    updateKeysHud();
     updateDoorPrompt();
     updateExploration();
     startLoop({
@@ -530,6 +570,8 @@ export async function startVerticalSlice() {
             relicNode.updateWorld();
             extractionNode.updateWorld();
             for (const node of lootNodes)
+                node.updateWorld();
+            for (const node of containerNodes)
                 node.updateWorld();
             for (const node of roomPropNodes)
                 node.updateWorld();
@@ -642,6 +684,11 @@ export async function startVerticalSlice() {
                 }
             }
             renderer.setSurfaceTexture(null);
+            for (let index = 0; index < containers.length; index += 1) {
+                const container = containers[index];
+                if (!openedContainers.has(container.id) && exploration.isVisible(container.point))
+                    renderer.drawMesh(containerMeshes[container.kind], containerNodes[index].worldMatrix);
+            }
             if (apexVisible && exploration.isVisible(apexPosition))
                 renderer.drawMesh(apexMesh, apexNode.worldMatrix);
             for (const enemy of enemies.snapshots()) {

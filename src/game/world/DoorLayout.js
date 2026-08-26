@@ -22,7 +22,15 @@ export function createDoorLayout(tiles, rooms, connections, random) {
         });
         roomsWithDoors.add(room.id);
     }
-    return doors;
+    // One key gate creates a short, solvable detour without sealing the procedural objective.
+    const lockable = doors.filter((door) => door.state === 'closed');
+    const index = lockable.length === 0 ? -1 : Math.floor(random() * lockable.length);
+    const locked = lockable[index];
+    if (locked === undefined)
+        return doors;
+    return doors.map((door) => door.id === locked.id
+        ? { ...door, state: 'locked', requiredKey: 'AMBER KEYCARD' }
+        : door);
 }
 function hasDoorFrame(tiles, point, offset) {
     const outside = { x: point.x + offset.x, y: point.y + offset.y };

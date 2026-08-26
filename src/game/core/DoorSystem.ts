@@ -24,16 +24,16 @@ export class DoorSystem {
     return door !== undefined && door.state !== 'open';
   }
 
-  interact(point: Point): DoorInteraction | undefined {
+  interact(point: Point, keys: ReadonlySet<string> = new Set()): DoorInteraction | undefined {
     const door = this.getAt(point);
     if (door === undefined) return undefined;
     if (door.state === 'open') return { door, opened: false, message: 'THE DOOR IS ALREADY OPEN.' };
-    if (door.state === 'locked') return { door, opened: false, message: `LOCKED. REQUIRES ${door.requiredKey ?? 'A KEY'}.` };
+    if (door.state === 'locked' && !keys.has(door.requiredKey ?? '')) return { door, opened: false, message: `LOCKED. REQUIRES ${door.requiredKey ?? 'A KEY'}.` };
     if (door.state === 'sealed') return { door, opened: false, message: 'THE DOOR IS SEALED FROM THE OTHER SIDE.' };
     if (door.state === 'secret') return { door, opened: false, message: 'THE STONE DOES NOT YIELD.' };
 
     const openedDoor = { ...door, state: 'open' as DoorState };
     this.doors.set(door.id, openedDoor);
-    return { door: openedDoor, opened: true, message: 'THE IRON DOOR GROANS OPEN.' };
+    return { door: openedDoor, opened: true, message: door.state === 'locked' ? 'AMBER KEYCARD ACCEPTED. THE LOCK RELEASES.' : 'THE IRON DOOR GROANS OPEN.' };
   }
 }

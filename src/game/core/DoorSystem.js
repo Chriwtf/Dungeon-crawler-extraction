@@ -17,13 +17,13 @@ export class DoorSystem {
         const door = this.getAt(point);
         return door !== undefined && door.state !== 'open';
     }
-    interact(point) {
+    interact(point, keys = new Set()) {
         const door = this.getAt(point);
         if (door === undefined)
             return undefined;
         if (door.state === 'open')
             return { door, opened: false, message: 'THE DOOR IS ALREADY OPEN.' };
-        if (door.state === 'locked')
+        if (door.state === 'locked' && !keys.has(door.requiredKey ?? ''))
             return { door, opened: false, message: `LOCKED. REQUIRES ${door.requiredKey ?? 'A KEY'}.` };
         if (door.state === 'sealed')
             return { door, opened: false, message: 'THE DOOR IS SEALED FROM THE OTHER SIDE.' };
@@ -31,6 +31,6 @@ export class DoorSystem {
             return { door, opened: false, message: 'THE STONE DOES NOT YIELD.' };
         const openedDoor = { ...door, state: 'open' };
         this.doors.set(door.id, openedDoor);
-        return { door: openedDoor, opened: true, message: 'THE IRON DOOR GROANS OPEN.' };
+        return { door: openedDoor, opened: true, message: door.state === 'locked' ? 'AMBER KEYCARD ACCEPTED. THE LOCK RELEASES.' : 'THE IRON DOOR GROANS OPEN.' };
     }
 }

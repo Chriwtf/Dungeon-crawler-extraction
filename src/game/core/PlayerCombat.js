@@ -49,6 +49,12 @@ export class PlayerCombat {
         this.hpValue += recovered;
         return recovered;
     }
+    addMedkit() {
+        if (this.medkitsValue >= 3)
+            return false;
+        this.medkitsValue += 1;
+        return true;
+    }
     resolveIncoming(damage) {
         const stance = this.stance;
         this.stance = 'none';

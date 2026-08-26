@@ -38,6 +38,12 @@ export class PlayerCombat {
     return recovered;
   }
 
+  addMedkit(): boolean {
+    if (this.medkitsValue >= 3) return false;
+    this.medkitsValue += 1;
+    return true;
+  }
+
   resolveIncoming(damage: number): CombatResolution {
     const stance = this.stance;
     this.stance = 'none';
