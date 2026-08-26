@@ -18,6 +18,7 @@ import sampleLootTextureUrl from '../assets/textures/loot-sample-albedo.png?url'
 import componentLootTextureUrl from '../assets/textures/loot-component-albedo.png?url';
 import artifactLootTextureUrl from '../assets/textures/loot-artifact-albedo.png?url';
 import * as atmosphereScript from './scripts/Atmosphere.drs';
+import * as facilityDirectorScript from './scripts/FacilityDirector.drs';
 const STEP_METRES = 2;
 const EXTRACTION_RANGE = 2.1;
 const PLAYER_HEIGHT = 1.65;
@@ -47,6 +48,7 @@ export async function startVerticalSlice() {
       <p id="stash-readout">STASH: 0 CR // EXTRACT TO BANK</p>
       <p id="pressure-readout">THREAT: 0% // NOISE: 0</p>
       <p id="echo-readout">ECHO: SILENT</p>
+      <p id="facility-readout">FACILITY: NORMAL</p>
       <p id="apex-readout">STALKER: DORMANT</p>
       <p id="visibility-readout">TORCH: ON // SIGHT: 8M</p>
       <p id="message-readout">The air is still. Move carefully.</p>
@@ -70,6 +72,7 @@ export async function startVerticalSlice() {
         stash: requireElement('#stash-readout'),
         pressure: requireElement('#pressure-readout'),
         echo: requireElement('#echo-readout'),
+        facility: requireElement('#facility-readout'),
         apex: requireElement('#apex-readout'),
         visibility: requireElement('#visibility-readout'),
         message: requireElement('#message-readout'),
@@ -176,9 +179,13 @@ export async function startVerticalSlice() {
     const atmosphereModule = loadModule(atmosphereScript);
     const atmosphereState = atmosphereModule.exports.createAlarmState();
     const updateAtmosphere = atmosphereModule.exports.update;
+    const facilityModule = loadModule(facilityDirectorScript);
+    const facilityState = facilityModule.exports.createFacilityState();
+    const updateFacility = facilityModule.exports.advance;
     const apex = new ApexDirector(dungeon);
     let apexVisible = false;
     let apexMode = 'dormant';
+    let facilityMode = 0;
     let hasRelic = false;
     let completed = false;
     let lootValue = 0;
@@ -232,6 +239,9 @@ export async function startVerticalSlice() {
     });
     const advanceTurn = (action, message) => {
         const event = simulation.advance(action, message, lootWeight, cargoNoiseReduction);
+        const previousFacilityMode = facilityMode;
+        updateFacility(facilityState, event.turn, event.pressure, event.noiseLevel);
+        facilityMode = Math.round(facilityState.mode);
         const pulse = propagateNoise(dungeon, worldToPoint(dungeon, player.x, player.z), event.noise, event.noiseLevel);
         const apexEvent = apex.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, event.pressure, event.turn, torchOn);
         const apexWorld = pointToWorld(dungeon, apexEvent.position);
@@ -244,8 +254,11 @@ export async function startVerticalSlice() {
         hud.echo.textContent = pulse.intensity === 0
             ? 'ECHO: FADING'
             : `ECHO: ${pulse.reachedTiles} TILES // RANGE: ${pulse.radiusTiles * STEP_METRES}M`;
+        hud.facility.textContent = `FACILITY: ${facilityLabel(facilityMode)}`;
         hud.apex.textContent = `STALKER: ${apexEvent.mode.toUpperCase()}`;
-        hud.message.textContent = apexEvent.message ?? event.message;
+        hud.message.textContent = apexEvent.message ?? (facilityMode !== previousFacilityMode
+            ? facilityMessage(facilityMode)
+            : event.message);
         if (apexEvent.captured) {
             completed = true;
             hud.objective.textContent = 'RUN LOST // CARGO ABANDONED';
@@ -387,15 +400,16 @@ export async function startVerticalSlice() {
                 });
             }
             const alertPulse = 0.36 + atmosphereState.level * (0.34 + Math.sin(visualTime * 8) * 0.3);
+            const facilityLight = facilityMode === 2 ? 0.08 : facilityMode === 1 ? 0.68 : 1;
             for (const position of emergencyPositions) {
                 lights.push({
                     x: position.x,
                     y: 2.65,
                     z: position.z,
-                    r: 0.42 + atmosphereState.level * alertPulse,
-                    g: 0.06 - atmosphereState.level * 0.04,
-                    b: 0.045 - atmosphereState.level * 0.03,
-                    radius: 3.1 + atmosphereState.level * 1.3,
+                    r: (0.42 + atmosphereState.level * alertPulse) * facilityLight,
+                    g: (0.06 - atmosphereState.level * 0.04) * facilityLight,
+                    b: (0.045 - atmosphereState.level * 0.03) * facilityLight,
+                    radius: (3.1 + atmosphereState.level * 1.3) * facilityLight,
                     flicker: 0.22 + atmosphereState.level * 0.43,
                     shadowNear: 0.1,
                     sourceRadius: 0.04,
@@ -421,7 +435,7 @@ export async function startVerticalSlice() {
             environment.lightSourceRadii = lightBuffer.sourceRadii;
             environment.lightWeights = lightBuffer.weights;
             environment.activeLightWorldIndices = lightBuffer.sourceIndex;
-            environment.fogDensity = 0.014 + Math.min(0.007, simulation.pressure * 0.00007) + atmosphereState.level * 0.003;
+            environment.fogDensity = 0.014 + Math.min(0.007, simulation.pressure * 0.00007) + atmosphereState.level * 0.003 + (facilityMode === 2 ? 0.004 : 0);
             renderer.beginFrame([0.004, 0.009, 0.007]);
             renderer.bindMeshPass(camera, environment);
             renderer.setSurfaceTexture(floorTexture, 1.4, 1.4);
@@ -523,6 +537,18 @@ function selectEmergencyPositions(dungeon, count) {
         }
     }
     return candidates.slice(0, count);
+}
+function facilityLabel(mode) {
+    return mode === 2 ? 'BLACKOUT' : mode === 1 ? 'EMERGENCY' : 'NORMAL';
+}
+function facilityMessage(mode) {
+    if (mode === 2) {
+        return 'FACILITY BLACKOUT. YOUR TORCH IS THE ONLY RELIABLE LIGHT.';
+    }
+    if (mode === 1) {
+        return 'EMERGENCY CIRCUIT ACTIVE. RED LIGHTS STUTTER DOWN THE HALL.';
+    }
+    return 'AUXILIARY POWER RETURNS. THE HUM NEVER STOPS.';
 }
 function distance(a, b) {
     return Math.hypot(a.x - b.x, a.z - b.z);

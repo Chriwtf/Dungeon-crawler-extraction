@@ -1,4 +1,6 @@
+import { loadModule } from 'driftscript';
 import { isNoiseAudibleAt } from './NoiseSystem';
+import * as apexBrainScript from '../../drift/scripts/ApexBrain.drs';
 /** A deterministic hearing-first stalker. It never reads renderer state or player inputs directly. */
 export class ApexDirector {
     constructor(dungeon) {
@@ -20,18 +22,34 @@ export class ApexDirector {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "mind", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
+        Object.defineProperty(this, "advanceMind", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         this.positionValue = findFarthestFloor(dungeon, dungeon.playerStart);
+        const module = loadModule(apexBrainScript);
+        this.mind = module.exports.createApexMind();
+        this.advanceMind = module.exports.advance;
     }
     advance(dungeon, player, pulse, pressure, turn, torchOn) {
-        let message = null;
         const heardPlayer = pulse.intensity > 0 && isNoiseAudibleAt(pulse, this.positionValue);
-        if (this.modeValue === 'dormant' && (pressure >= 18 || (pulse.intensity >= 4 && turn >= 4))) {
-            this.modeValue = 'searching';
+        const wasDormant = this.modeValue === 'dormant';
+        this.advanceMind(this.mind, pressure, turn, pulse.intensity, heardPlayer);
+        this.modeValue = modeFromScript(this.mind.mode);
+        let message = null;
+        if (wasDormant && this.modeValue === 'searching') {
             this.target = player;
             message = 'Something answers the noise from deeper in the facility.';
         }
-        if (heardPlayer) {
-            this.modeValue = 'hunting';
+        if (this.modeValue === 'hunting' && heardPlayer) {
             this.target = player;
             message = 'The Apex heard that.';
         }
@@ -47,6 +65,13 @@ export class ApexDirector {
         const visible = this.modeValue !== 'dormant' && torchOn && distance <= 4;
         return { mode: this.modeValue, position: { ...this.positionValue }, captured, visible, message };
     }
+}
+function modeFromScript(mode) {
+    if (mode >= 2)
+        return 'hunting';
+    if (mode >= 1)
+        return 'searching';
+    return 'dormant';
 }
 function findFarthestFloor(dungeon, from) {
     let farthest = { ...from };

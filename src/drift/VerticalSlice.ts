@@ -28,6 +28,7 @@ import sampleLootTextureUrl from '../assets/textures/loot-sample-albedo.png?url'
 import componentLootTextureUrl from '../assets/textures/loot-component-albedo.png?url';
 import artifactLootTextureUrl from '../assets/textures/loot-artifact-albedo.png?url';
 import * as atmosphereScript from './scripts/Atmosphere.drs';
+import * as facilityDirectorScript from './scripts/FacilityDirector.drs';
 
 const STEP_METRES = 2;
 const EXTRACTION_RANGE = 2.1;
@@ -47,6 +48,7 @@ interface Hud {
   readonly stash: HTMLElement;
   readonly pressure: HTMLElement;
   readonly echo: HTMLElement;
+  readonly facility: HTMLElement;
   readonly apex: HTMLElement;
   readonly visibility: HTMLElement;
   readonly message: HTMLElement;
@@ -60,6 +62,10 @@ interface Position {
 
 interface AlarmState {
   level: number;
+}
+
+interface FacilityState {
+  mode: number;
 }
 
 /**
@@ -81,6 +87,7 @@ export async function startVerticalSlice(): Promise<void> {
       <p id="stash-readout">STASH: 0 CR // EXTRACT TO BANK</p>
       <p id="pressure-readout">THREAT: 0% // NOISE: 0</p>
       <p id="echo-readout">ECHO: SILENT</p>
+      <p id="facility-readout">FACILITY: NORMAL</p>
       <p id="apex-readout">STALKER: DORMANT</p>
       <p id="visibility-readout">TORCH: ON // SIGHT: 8M</p>
       <p id="message-readout">The air is still. Move carefully.</p>
@@ -105,6 +112,7 @@ export async function startVerticalSlice(): Promise<void> {
     stash: requireElement('#stash-readout'),
     pressure: requireElement('#pressure-readout'),
     echo: requireElement('#echo-readout'),
+    facility: requireElement('#facility-readout'),
     apex: requireElement('#apex-readout'),
     visibility: requireElement('#visibility-readout'),
     message: requireElement('#message-readout'),
@@ -216,9 +224,13 @@ export async function startVerticalSlice(): Promise<void> {
   const atmosphereModule = loadModule(atmosphereScript as unknown as Record<string, unknown>);
   const atmosphereState = (atmosphereModule.exports.createAlarmState as () => AlarmState)();
   const updateAtmosphere = atmosphereModule.exports.update as (state: AlarmState, hunting: boolean, pressure: number, dt: number) => void;
+  const facilityModule = loadModule(facilityDirectorScript as unknown as Record<string, unknown>);
+  const facilityState = (facilityModule.exports.createFacilityState as () => FacilityState)();
+  const updateFacility = facilityModule.exports.advance as (state: FacilityState, turn: number, pressure: number, noise: number) => void;
   const apex = new ApexDirector(dungeon);
   let apexVisible = false;
   let apexMode: ApexMode = 'dormant';
+  let facilityMode = 0;
   let hasRelic = false;
   let completed = false;
   let lootValue = 0;
@@ -273,6 +285,9 @@ export async function startVerticalSlice(): Promise<void> {
 
   const advanceTurn = (action: 'move' | 'turn' | 'blocked' | 'torch', message: string) => {
     const event = simulation.advance(action, message, lootWeight, cargoNoiseReduction);
+    const previousFacilityMode = facilityMode;
+    updateFacility(facilityState, event.turn, event.pressure, event.noiseLevel);
+    facilityMode = Math.round(facilityState.mode);
     const pulse = propagateNoise(dungeon, worldToPoint(dungeon, player.x, player.z), event.noise, event.noiseLevel);
     const apexEvent = apex.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, event.pressure, event.turn, torchOn);
     const apexWorld = pointToWorld(dungeon, apexEvent.position);
@@ -285,8 +300,11 @@ export async function startVerticalSlice(): Promise<void> {
     hud.echo.textContent = pulse.intensity === 0
       ? 'ECHO: FADING'
       : `ECHO: ${pulse.reachedTiles} TILES // RANGE: ${pulse.radiusTiles * STEP_METRES}M`;
+    hud.facility.textContent = `FACILITY: ${facilityLabel(facilityMode)}`;
     hud.apex.textContent = `STALKER: ${apexEvent.mode.toUpperCase()}`;
-    hud.message.textContent = apexEvent.message ?? event.message;
+    hud.message.textContent = apexEvent.message ?? (facilityMode !== previousFacilityMode
+      ? facilityMessage(facilityMode)
+      : event.message);
     if (apexEvent.captured) {
       completed = true;
       hud.objective.textContent = 'RUN LOST // CARGO ABANDONED';
@@ -433,15 +451,16 @@ export async function startVerticalSlice(): Promise<void> {
         });
       }
       const alertPulse = 0.36 + atmosphereState.level * (0.34 + Math.sin(visualTime * 8) * 0.3);
+      const facilityLight = facilityMode === 2 ? 0.08 : facilityMode === 1 ? 0.68 : 1;
       for (const position of emergencyPositions) {
         lights.push({
           x: position.x,
           y: 2.65,
           z: position.z,
-          r: 0.42 + atmosphereState.level * alertPulse,
-          g: 0.06 - atmosphereState.level * 0.04,
-          b: 0.045 - atmosphereState.level * 0.03,
-          radius: 3.1 + atmosphereState.level * 1.3,
+          r: (0.42 + atmosphereState.level * alertPulse) * facilityLight,
+          g: (0.06 - atmosphereState.level * 0.04) * facilityLight,
+          b: (0.045 - atmosphereState.level * 0.03) * facilityLight,
+          radius: (3.1 + atmosphereState.level * 1.3) * facilityLight,
           flicker: 0.22 + atmosphereState.level * 0.43,
           shadowNear: 0.1,
           sourceRadius: 0.04,
@@ -467,7 +486,7 @@ export async function startVerticalSlice(): Promise<void> {
       environment.lightSourceRadii = lightBuffer.sourceRadii;
       environment.lightWeights = lightBuffer.weights;
       environment.activeLightWorldIndices = lightBuffer.sourceIndex;
-      environment.fogDensity = 0.014 + Math.min(0.007, simulation.pressure * 0.00007) + atmosphereState.level * 0.003;
+      environment.fogDensity = 0.014 + Math.min(0.007, simulation.pressure * 0.00007) + atmosphereState.level * 0.003 + (facilityMode === 2 ? 0.004 : 0);
 
       renderer.beginFrame([0.004, 0.009, 0.007]);
       renderer.bindMeshPass(camera, environment);
@@ -575,6 +594,22 @@ function selectEmergencyPositions(dungeon: ReturnType<typeof generateDungeon>, c
     }
   }
   return candidates.slice(0, count);
+}
+
+function facilityLabel(mode: number): string {
+  return mode === 2 ? 'BLACKOUT' : mode === 1 ? 'EMERGENCY' : 'NORMAL';
+}
+
+function facilityMessage(mode: number): string {
+  if (mode === 2) {
+    return 'FACILITY BLACKOUT. YOUR TORCH IS THE ONLY RELIABLE LIGHT.';
+  }
+
+  if (mode === 1) {
+    return 'EMERGENCY CIRCUIT ACTIVE. RED LIGHTS STUTTER DOWN THE HALL.';
+  }
+
+  return 'AUXILIARY POWER RETURNS. THE HUM NEVER STOPS.';
 }
 
 function distance(a: Position, b: Position): number {

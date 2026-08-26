@@ -1,5 +1,7 @@
 import type { DungeonData, Point } from '../world/DungeonGenerator';
+import { loadModule } from 'driftscript';
 import { isNoiseAudibleAt, type NoisePulse } from './NoiseSystem';
+import * as apexBrainScript from '../../drift/scripts/ApexBrain.drs';
 
 export type ApexMode = 'dormant' | 'searching' | 'hunting';
 
@@ -16,22 +18,28 @@ export class ApexDirector {
   private modeValue: ApexMode = 'dormant';
   private target: Point | null = null;
   private readonly positionValue: Point;
+  private readonly mind: ApexMind;
+  private readonly advanceMind: (mind: ApexMind, pressure: number, turn: number, pulse: number, heard: boolean) => void;
 
   constructor(dungeon: DungeonData) {
     this.positionValue = findFarthestFloor(dungeon, dungeon.playerStart);
+    const module = loadModule(apexBrainScript as unknown as Record<string, unknown>);
+    this.mind = (module.exports.createApexMind as () => ApexMind)();
+    this.advanceMind = module.exports.advance as (mind: ApexMind, pressure: number, turn: number, pulse: number, heard: boolean) => void;
   }
 
   advance(dungeon: DungeonData, player: Point, pulse: NoisePulse, pressure: number, turn: number, torchOn: boolean): ApexEvent {
-    let message: string | null = null;
     const heardPlayer = pulse.intensity > 0 && isNoiseAudibleAt(pulse, this.positionValue);
+    const wasDormant = this.modeValue === 'dormant';
+    this.advanceMind(this.mind, pressure, turn, pulse.intensity, heardPlayer);
+    this.modeValue = modeFromScript(this.mind.mode);
+    let message: string | null = null;
 
-    if (this.modeValue === 'dormant' && (pressure >= 18 || (pulse.intensity >= 4 && turn >= 4))) {
-      this.modeValue = 'searching';
+    if (wasDormant && this.modeValue === 'searching') {
       this.target = player;
       message = 'Something answers the noise from deeper in the facility.';
     }
-    if (heardPlayer) {
-      this.modeValue = 'hunting';
+    if (this.modeValue === 'hunting' && heardPlayer) {
       this.target = player;
       message = 'The Apex heard that.';
     }
@@ -47,6 +55,16 @@ export class ApexDirector {
     const visible = this.modeValue !== 'dormant' && torchOn && distance <= 4;
     return { mode: this.modeValue, position: { ...this.positionValue }, captured, visible, message };
   }
+}
+
+interface ApexMind {
+  mode: number;
+}
+
+function modeFromScript(mode: number): ApexMode {
+  if (mode >= 2) return 'hunting';
+  if (mode >= 1) return 'searching';
+  return 'dormant';
 }
 
 function findFarthestFloor(dungeon: DungeonData, from: Point): Point {

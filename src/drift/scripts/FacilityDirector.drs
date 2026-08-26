@@ -1,0 +1,16 @@
+// Encounter pacing belongs to the content layer: the host provides deterministic telemetry,
+// while the script decides when the facility changes its behaviour.
+data FacilityState {
+    mode: f32 = 0
+    nextShift: f32 = 7
+}
+
+fn advance(state: mut FacilityState, turn: f32, pressure: f32, noise: f32) {
+    if turn >= state.nextShift && pressure >= 16 {
+        state.mode += 1
+        if state.mode > 2 {
+            state.mode = 0
+        }
+        state.nextShift = turn + 6 + noise
+    }
+}
