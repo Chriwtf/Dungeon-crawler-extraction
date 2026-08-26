@@ -30,6 +30,7 @@ import industrialPropsTextureUrl from '../assets/textures/industrial-props-albed
 import crawlerTextureUrl from '../assets/textures/crawler-albedo.png?url';
 import guardTextureUrl from '../assets/textures/guard-albedo.png?url';
 import anomalyTextureUrl from '../assets/textures/anomaly-albedo.png?url';
+import apexTextureUrl from '../assets/textures/apex-albedo.png?url';
 import emergencyFixtureTextureUrl from '../assets/textures/emergency-fixture-albedo.png?url';
 import * as atmosphereScript from './scripts/Atmosphere.drs';
 import * as facilityDirectorScript from './scripts/FacilityDirector.drs';
@@ -137,7 +138,7 @@ export async function startVerticalSlice() {
     const dungeonMeshes = buildDungeonMeshes(dungeon);
     const floor = renderer.createMesh(dungeonMeshes.floor);
     const walls = renderer.createMesh(dungeonMeshes.walls);
-    const [floorTexture, wallTexture, relicTexture, extractionTexture, documentLootTexture, sampleLootTexture, componentLootTexture, artifactLootTexture, industrialPropsTexture, crawlerTexture, guardTexture, anomalyTexture, emergencyFixtureTexture] = await Promise.all([
+    const [floorTexture, wallTexture, relicTexture, extractionTexture, documentLootTexture, sampleLootTexture, componentLootTexture, artifactLootTexture, industrialPropsTexture, crawlerTexture, guardTexture, anomalyTexture, apexTexture, emergencyFixtureTexture] = await Promise.all([
         loadSurfaceTexture(renderer, floorTextureUrl),
         loadSurfaceTexture(renderer, wallTextureUrl),
         loadSurfaceTexture(renderer, relicTextureUrl, 'clamp'),
@@ -150,6 +151,7 @@ export async function startVerticalSlice() {
         loadSurfaceTexture(renderer, crawlerTextureUrl),
         loadSurfaceTexture(renderer, guardTextureUrl),
         loadSurfaceTexture(renderer, anomalyTextureUrl),
+        loadSurfaceTexture(renderer, apexTextureUrl),
         loadSurfaceTexture(renderer, emergencyFixtureTextureUrl),
     ]);
     const relicPosition = pointToWorld(dungeon, dungeon.objective);
@@ -665,7 +667,7 @@ export async function startVerticalSlice() {
             renderer.drawMesh(floor, identity.worldMatrix);
             renderer.setSurfaceTexture(wallTexture, 1, 1.8);
             renderer.drawMesh(walls, identity.worldMatrix);
-            renderer.setSurfaceTexture(industrialPropsTexture, 1, 1);
+            renderer.setSurfaceTexture(industrialPropsTexture, 0.6, 0.6);
             for (let index = 0; index < dungeon.rooms.length; index += 1) {
                 const room = dungeon.rooms[index];
                 if (!exploration.isVisible(room.center))
@@ -681,7 +683,7 @@ export async function startVerticalSlice() {
             for (const node of emergencyNodes)
                 renderer.drawMesh(emergencyLamp, node.worldMatrix);
             if (!hasRelic && exploration.isVisible(dungeon.objective)) {
-                renderer.setSurfaceTexture(industrialPropsTexture, 1, 1);
+                renderer.setSurfaceTexture(industrialPropsTexture, 0.6, 0.6);
                 renderer.drawMesh(relicPedestal, relicPedestalNode.worldMatrix);
                 renderer.setSurfaceTexture(relicTexture);
                 renderer.drawMesh(relicTexturedPedestal, relicPedestalNode.worldMatrix);
@@ -695,13 +697,13 @@ export async function startVerticalSlice() {
                     renderer.drawMesh(lootMeshes[loot.kind], lootNodes[index].worldMatrix);
                 }
             }
-            renderer.setSurfaceTexture(industrialPropsTexture, 1, 1);
+            renderer.setSurfaceTexture(industrialPropsTexture, 0.6, 0.6);
             for (let index = 0; index < containers.length; index += 1) {
                 const container = containers[index];
                 if (!openedContainers.has(container.id) && exploration.isVisible(container.point))
                     renderer.drawMesh(containerMeshes[container.kind], containerNodes[index].worldMatrix);
             }
-            renderer.setSurfaceTexture(anomalyTexture, 1, 1);
+            renderer.setSurfaceTexture(apexTexture, 0.45, 0.45);
             if (apexVisible && exploration.isVisible(apexPosition))
                 renderer.drawMesh(apexMesh, apexNode.worldMatrix);
             for (const enemy of enemies.snapshots()) {
@@ -709,12 +711,12 @@ export async function startVerticalSlice() {
                     continue;
                 const node = enemyNodes.get(enemy.id);
                 if (node !== undefined) {
-                    renderer.setSurfaceTexture(enemy.kind === 'crawler' ? crawlerTexture : guardTexture, 1, 1);
+                    renderer.setSurfaceTexture(enemy.kind === 'crawler' ? crawlerTexture : guardTexture, 0.55, 0.55);
                     renderer.drawMesh(enemyMeshes[enemy.kind], node.worldMatrix);
                 }
             }
             if (exploration.isVisible(dungeon.extraction)) {
-                renderer.setSurfaceTexture(industrialPropsTexture, 1, 1);
+                renderer.setSurfaceTexture(industrialPropsTexture, 0.6, 0.6);
                 renderer.drawMesh(extractionFrame, extractionNode.worldMatrix);
                 renderer.setSurfaceTexture(extractionTexture);
                 renderer.drawMesh(texturedExtractionHatch, extractionNode.worldMatrix);
