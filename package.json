@@ -18,6 +18,7 @@
     "@driftengine/core": "file:../driftengine/packages/core",
     "@driftengine/drft": "file:../driftengine/packages/drft",
     "@driftengine/entities": "file:../driftengine/packages/entities",
+    "@driftengine/physics": "file:../driftengine/packages/physics",
     "@driftengine/script": "file:../driftengine/packages/script",
     "driftscript": "file:../driftengine/packages/driftscript",
     "gl-matrix": "^3.4.3",

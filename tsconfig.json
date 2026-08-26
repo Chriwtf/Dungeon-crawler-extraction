@@ -5,7 +5,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "driftscript": ["../driftengine/packages/driftscript/src/index.ts"]
+      "driftscript": ["../driftengine/packages/driftscript/src/index.ts"],
+      "@driftengine/physics": ["../driftengine/packages/physics/src/index.ts"]
     },
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,

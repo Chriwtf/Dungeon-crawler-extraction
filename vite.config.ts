@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       driftscript: fileURLToPath(new URL('../driftengine/packages/driftscript/src/index.ts', import.meta.url)),
+      '@driftengine/physics': fileURLToPath(new URL('../driftengine/packages/physics/src/index.ts', import.meta.url)),
     },
   },
   server: {
