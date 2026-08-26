@@ -11,6 +11,7 @@ export type DungeonDoor = {
   readonly turnCost: number;
   readonly areas: readonly [string, string];
   readonly rotation: number;
+  readonly wallOffset: Readonly<{ x: number; y: number }>;
 };
 
 export function createDoorLayout(tiles: TileGrid, rooms: readonly RoomData[], random: () => number): readonly DungeonDoor[] {
@@ -30,6 +31,7 @@ export function createDoorLayout(tiles: TileGrid, rooms: readonly RoomData[], ra
       turnCost: 1,
       areas: [previous.id, room.id],
       rotation: doorway.dx !== 0 ? 0 : Math.PI / 2,
+      wallOffset: { x: doorway.dx, y: doorway.dy },
     });
   }
   return doors;

@@ -7,7 +7,7 @@ import { propagateNoise } from '../game/core/NoiseSystem';
 import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
 import { RunSimulation } from '../game/core/RunSimulation';
 import { generateDungeon } from '../game/world/DungeonGenerator';
-import { buildDungeonMeshes, pointToWorld, worldToPoint } from './ProceduralDungeon3d';
+import { TILE_METRES, buildDungeonMeshes, pointToWorld, worldToPoint } from './ProceduralDungeon3d';
 import { buildObjectiveTextureMeshes } from './ObjectiveTextureMeshes';
 import { buildLootPropMeshes } from './LootProps3d';
 import { buildDungeonDoor } from './DoorProps3d';
@@ -184,7 +184,7 @@ export async function startVerticalSlice() {
     const doorNodes = dungeon.doors.map((door) => {
         const position = pointToWorld(dungeon, door.point);
         const node = new SceneNode();
-        node.setPosition(position.x, 0, position.z);
+        node.setPosition(position.x + door.wallOffset.x * TILE_METRES / 2, 0, position.z + door.wallOffset.y * TILE_METRES / 2);
         node.setRotationAxisAngle(0, 1, 0, door.rotation);
         return node;
     });

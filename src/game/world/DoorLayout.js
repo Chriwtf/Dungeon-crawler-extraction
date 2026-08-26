@@ -15,6 +15,7 @@ export function createDoorLayout(tiles, rooms, random) {
             turnCost: 1,
             areas: [previous.id, room.id],
             rotation: doorway.dx !== 0 ? 0 : Math.PI / 2,
+            wallOffset: { x: doorway.dx, y: doorway.dy },
         });
     }
     return doors;
