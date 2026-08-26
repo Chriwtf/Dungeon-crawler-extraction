@@ -28,6 +28,7 @@ import { buildDungeonDoor } from './DoorProps3d';
 import { buildApexMesh, buildEnemyMeshes } from './EnemyProps3d';
 import { buildContainerMeshes } from './ContainerProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
+import { RunAudio } from './RunAudio';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
 import relicTextureUrl from '../assets/textures/relic-pedestal-albedo.png?url';
@@ -300,6 +301,7 @@ export async function startVerticalSlice(): Promise<void> {
   let facing = 1;
   const simulation = new RunSimulation(RUN_SEED);
   const combat = new PlayerCombat(RUN_SEED);
+  const audio = new RunAudio();
   const atmosphereModule = loadModule(atmosphereScript as unknown as Record<string, unknown>);
   const atmosphereState = (atmosphereModule.exports.createAlarmState as () => AlarmState)();
   const updateAtmosphere = atmosphereModule.exports.update as (state: AlarmState, hunting: boolean, pressure: number, dt: number) => void;
@@ -420,12 +422,14 @@ export async function startVerticalSlice(): Promise<void> {
 
   const advanceTurn = (action: 'move' | 'turn' | 'blocked' | 'torch' | 'door' | 'attack' | 'heavyAttack' | 'guard' | 'dodge' | 'item', message: string) => {
     const event = simulation.advance(action, message, lootWeight, cargoNoiseReduction);
+    audio.playTurn(action);
     advanceRelic(relicState);
     const relicSecured = relicState.secured > 0;
     const previousFacilityMode = facilityMode;
     updateFacility(facilityState, event.turn, event.pressure, event.noiseLevel, relicSecured);
     facilityMode = Math.round(facilityState.mode);
     const pulse = propagateNoise(dungeon, worldToPoint(dungeon, player.x, player.z), event.noise, event.noiseLevel);
+    const previousApexMode = apexMode;
     const apexEvent = apex.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, event.pressure, event.turn, torchOn, relicSecured);
     const apexWorld = pointToWorld(dungeon, apexEvent.position);
     apexNode.setPosition(apexWorld.x, 0, apexWorld.z);
@@ -435,10 +439,13 @@ export async function startVerticalSlice(): Promise<void> {
     apexMode = apexEvent.mode;
     app.dataset.facilityMode = facilityMode === 2 ? 'blackout' : facilityMode === 1 ? 'emergency' : 'normal';
     app.dataset.relicState = relicSecured ? 'secured' : 'unsecured';
+    audio.setTension(facilityMode, apexMode === 'hunting', relicSecured);
+    if (apexMode === 'hunting' && previousApexMode !== 'hunting') audio.play('apex');
     const enemyEvent = enemies.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, torchOn, (point) => doorSystem.isBlocking(point));
     syncEnemyNodes(enemyEvent.enemies);
     const incomingDamage = enemyEvent.attacks.reduce((total, attack) => total + attack.damage, 0);
     const combatEvent = combat.resolveIncoming(incomingDamage);
+    if (combatEvent.damage > 0) audio.play('damage');
     app.dataset.apexMode = apexMode;
     hud.turn.textContent = `TURN ${String(event.turn).padStart(3, '0')}`;
     hud.pressure.textContent = `DANGER ${meter(event.pressure, 100)}\nNOISE  ${meter(event.noiseLevel, 20)}`;
@@ -477,6 +484,7 @@ export async function startVerticalSlice(): Promise<void> {
     hud.stash.textContent = `BANK: ${progression.credits} CR`;
     hud.objective.textContent = 'EXTRACTION COMPLETE';
     hud.message.textContent = `EXTRACTED ${lootValue} CR IN ${simulation.turn} TURNS. Press reload to begin again.`;
+    audio.play('extract');
   };
 
   const act = (key: string) => {
@@ -539,6 +547,7 @@ export async function startVerticalSlice(): Promise<void> {
     if (key === 'x') {
       if (!hasRelic) {
         hud.message.textContent = 'EXTRACTION LOCKED. RECOVER THE RELIC FIRST.';
+        audio.play('locked');
       } else if (distance(player, extractionPosition) > EXTRACTION_RANGE) {
         hud.message.textContent = 'MOVE CLOSER TO THE EXTRACTION HATCH.';
       } else {
@@ -552,7 +561,10 @@ export async function startVerticalSlice(): Promise<void> {
       const interaction = doorSystem.interact(worldToPoint(dungeon, player.x + dx * STEP_METRES, player.z + dz * STEP_METRES), keys);
       if (interaction !== undefined) {
         if (interaction.opened) advanceTurn('door', interaction.message);
-        else hud.message.textContent = interaction.message;
+        else {
+          hud.message.textContent = interaction.message;
+          audio.play('locked');
+        }
         updateDoorPrompt();
         return;
       }
@@ -560,6 +572,7 @@ export async function startVerticalSlice(): Promise<void> {
       const container = containers.find((candidate) => !openedContainers.has(candidate.id) && candidate.point.x === playerPoint.x && candidate.point.y === playerPoint.y);
       if (container !== undefined) {
         openedContainers.add(container.id);
+        audio.play('container');
         if (container.kind === 'keyLocker') {
           keys.add(container.key ?? 'AMBER KEYCARD');
           updateKeysHud();
@@ -600,6 +613,7 @@ export async function startVerticalSlice(): Promise<void> {
       secureRelic(relicState);
       hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION // SIGNAL ACTIVE';
       app.dataset.relicState = 'secured';
+      audio.play('relic');
     }
     if (hasRelic && distance(player, extractionPosition) <= EXTRACTION_RANGE) {
       completeExtraction();
@@ -619,6 +633,7 @@ export async function startVerticalSlice(): Promise<void> {
       collectedLoot.add(recoveredLoot.id);
       lootValue += recoveredLoot.value;
       lootWeight += recoveredLoot.weight;
+      audio.play('loot');
       hud.loot.textContent = `CARRIED: ${lootValue} CR | ${lootWeight} KG`;
       hud.message.textContent = `SECURED: ${recoveredLoot.name.toUpperCase()} // +${recoveredLoot.value} CR // HEAVIER STEPS`;
     }
@@ -636,6 +651,7 @@ export async function startVerticalSlice(): Promise<void> {
     const mapped = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'q' : key === 'arrowright' ? 'e' : key;
     if (mapped === 'w' || mapped === 's' || mapped === 'q' || mapped === 'e' || mapped === 'f' || mapped === 'x' || mapped === ' ' || mapped === 'h' || mapped === 'g' || mapped === 'd' || mapped === 'i') {
       event.preventDefault();
+      audio.unlock();
       act(mapped);
     }
   });
