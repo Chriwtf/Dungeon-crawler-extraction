@@ -16,7 +16,8 @@ import { placeRunLoot } from '../game/core/RunLoot';
 import { propagateNoise } from '../game/core/NoiseSystem';
 import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
 import { RunSimulation } from '../game/core/RunSimulation';
-import { generateDungeon } from '../game/world/DungeonGenerator';
+import { ExplorationMemory } from '../game/world/ExplorationMemory';
+import { generateDungeon, type DungeonData, type Point } from '../game/world/DungeonGenerator';
 import { TILE_METRES, buildDungeonMeshes, pointToWorld, worldToPoint } from './ProceduralDungeon3d';
 import { buildObjectiveTextureMeshes } from './ObjectiveTextureMeshes';
 import { buildLootPropMeshes } from './LootProps3d';
@@ -82,6 +83,7 @@ export async function startVerticalSlice(): Promise<void> {
 
   app.innerHTML = `
     <canvas id="stage" aria-label="Dungeon extraction 3D vertical slice"></canvas>
+    <canvas id="minimap" aria-label="Exploration minimap"></canvas>
     <div class="atmosphere-vignette" aria-hidden="true"></div>
     <section class="run-hud" aria-live="polite">
       <p class="run-label">DRIFT // EXTRACTION PROTOCOL</p>
@@ -110,6 +112,7 @@ export async function startVerticalSlice(): Promise<void> {
     </section>`;
 
   const canvas = requireElement<HTMLCanvasElement>('#stage');
+  const minimap = requireElement<HTMLCanvasElement>('#minimap');
   const hud: Hud = {
     turn: requireElement('#turn-readout'),
     objective: requireElement('#objective-readout'),
@@ -160,6 +163,7 @@ export async function startVerticalSlice(): Promise<void> {
   });
 
   const dungeon = generateDungeon({ width: 20, height: 16, targetRooms: 12, minRoomSize: 4, maxRoomSize: 6 }, RUN_SEED);
+  const exploration = new ExplorationMemory(dungeon);
   const dungeonMeshes = buildDungeonMeshes(dungeon);
   const floor = renderer.createMesh(dungeonMeshes.floor);
   const walls = renderer.createMesh(dungeonMeshes.walls);
@@ -256,6 +260,7 @@ export async function startVerticalSlice(): Promise<void> {
   const updateFacility = facilityModule.exports.advance as (state: FacilityState, turn: number, pressure: number, noise: number) => void;
   const apex = new ApexDirector(dungeon);
   let apexVisible = false;
+  let apexPosition: Point = dungeon.playerStart;
   let apexMode: ApexMode = 'dormant';
   let facilityMode = 0;
   let hasRelic = false;
@@ -268,6 +273,11 @@ export async function startVerticalSlice(): Promise<void> {
   let previousRelicSpin = 0;
   let visualTime = 0;
   const lightBuffer = createPointLightBuffer();
+  const minimapContext = minimap.getContext('2d');
+  if (minimapContext === null) throw new Error('Minimap canvas is unavailable.');
+  const minimapScale = 8;
+  minimap.width = dungeon.config.width * minimapScale;
+  minimap.height = dungeon.config.height * minimapScale;
 
   const updateCamera = () => {
     const [dx, dz] = CARDINALS[facing];
@@ -295,6 +305,12 @@ export async function startVerticalSlice(): Promise<void> {
         : door.state === 'sealed'
           ? 'SEALED'
           : 'UNMARKED STONE';
+  };
+  const updateExploration = () => {
+    const playerPoint = worldToPoint(dungeon, player.x, player.z);
+    const radius = Math.max(1, Math.floor((torchOn ? torchSight : 2) / TILE_METRES));
+    exploration.update(playerPoint, radius, (point) => doorSystem.isBlocking(point));
+    drawMinimap(minimapContext, dungeon, exploration, playerPoint, hasRelic, minimapScale);
   };
   const renderUpgradePanel = () => {
     upgradeBalance.textContent = `AVAILABLE: ${progression.credits} CR`;
@@ -335,6 +351,7 @@ export async function startVerticalSlice(): Promise<void> {
     const apexEvent = apex.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, event.pressure, event.turn, torchOn);
     const apexWorld = pointToWorld(dungeon, apexEvent.position);
     apexNode.setPosition(apexWorld.x, 0, apexWorld.z);
+    apexPosition = apexEvent.position;
     apexVisible = apexEvent.visible;
     apexMode = apexEvent.mode;
     app.dataset.apexMode = apexMode;
@@ -354,6 +371,7 @@ export async function startVerticalSlice(): Promise<void> {
       hud.message.textContent = 'THE APEX FOUND YOU. NOTHING WAS BANKED.';
     }
     updateDoorPrompt();
+    updateExploration();
   };
 
   const completeExtraction = () => {
@@ -376,7 +394,7 @@ export async function startVerticalSlice(): Promise<void> {
     }
 
     if (key === 'x') {
-      if (!hasRelic) {
+      if (!hasRelic && exploration.isVisible(dungeon.objective)) {
         hud.message.textContent = 'EXTRACTION LOCKED. RECOVER THE RELIC FIRST.';
       } else if (distance(player, extractionPosition) > EXTRACTION_RANGE) {
         hud.message.textContent = 'MOVE CLOSER TO THE EXTRACTION HATCH.';
@@ -440,6 +458,7 @@ export async function startVerticalSlice(): Promise<void> {
       hasRelic = true;
       hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION';
       hud.message.textContent = 'RELIC SECURED. The extraction beacon is now active.';
+      updateExploration();
     }
   };
 
@@ -459,6 +478,7 @@ export async function startVerticalSlice(): Promise<void> {
 
   updateCamera();
   updateDoorPrompt();
+  updateExploration();
   startLoop({
     simulate(dt) {
       previousRelicSpin = relicSpin;
@@ -494,7 +514,7 @@ export async function startVerticalSlice(): Promise<void> {
             sourceRadius: 0.08,
           }]
         : [];
-      if (!hasRelic) {
+      if (!hasRelic && exploration.isVisible(dungeon.objective)) {
         lights.push({
           x: relicPosition.x,
           y: 1.5,
@@ -555,10 +575,11 @@ export async function startVerticalSlice(): Promise<void> {
       renderer.setSurfaceTexture(null);
       for (let index = 0; index < dungeon.rooms.length; index += 1) {
         const room = dungeon.rooms[index];
+        if (!exploration.isVisible(room.center)) continue;
         renderer.drawMesh(roomMeshes[room.archetype], roomPropNodes[index].worldMatrix);
       }
       for (let index = 0; index < dungeon.doors.length; index += 1) {
-        if (!doorSystem.isBlocking(dungeon.doors[index].point)) continue;
+        if (!doorSystem.isBlocking(dungeon.doors[index].point) || !exploration.isVisible(dungeon.doors[index].point)) continue;
         renderer.drawMesh(dungeonDoor, doorNodes[index].worldMatrix);
       }
       for (const node of emergencyNodes) renderer.drawMesh(emergencyLamp, node.worldMatrix);
@@ -571,18 +592,20 @@ export async function startVerticalSlice(): Promise<void> {
       }
       for (let index = 0; index < lootSpawns.length; index += 1) {
         const loot = lootSpawns[index];
-        if (!collectedLoot.has(loot.id)) {
+        if (!collectedLoot.has(loot.id) && exploration.isVisible(loot.point)) {
           renderer.setSurfaceTexture(lootTextures[loot.kind]);
           renderer.drawMesh(lootMeshes[loot.kind], lootNodes[index].worldMatrix);
         }
       }
       renderer.setSurfaceTexture(null);
-      if (apexVisible) renderer.drawMesh(apexMesh, apexNode.worldMatrix);
-      renderer.drawMesh(extractionFrame, extractionNode.worldMatrix);
-      renderer.setSurfaceTexture(extractionTexture);
-      renderer.drawMesh(texturedExtractionHatch, extractionNode.worldMatrix);
-      renderer.setSurfaceTexture(null);
-      renderer.drawMesh(hasRelic ? extractionReady : extractionLocked, extractionNode.worldMatrix);
+      if (apexVisible && exploration.isVisible(apexPosition)) renderer.drawMesh(apexMesh, apexNode.worldMatrix);
+      if (exploration.isVisible(dungeon.extraction)) {
+        renderer.drawMesh(extractionFrame, extractionNode.worldMatrix);
+        renderer.setSurfaceTexture(extractionTexture);
+        renderer.drawMesh(texturedExtractionHatch, extractionNode.worldMatrix);
+        renderer.setSurfaceTexture(null);
+        renderer.drawMesh(hasRelic ? extractionReady : extractionLocked, extractionNode.worldMatrix);
+      }
       renderer.endFrame();
     },
   });
@@ -676,6 +699,43 @@ function facilityMessage(mode: number): string {
   }
 
   return 'AUXILIARY POWER RETURNS. THE HUM NEVER STOPS.';
+}
+
+function drawMinimap(
+  context: CanvasRenderingContext2D,
+  dungeon: DungeonData,
+  exploration: ExplorationMemory,
+  player: Point,
+  hasRelic: boolean,
+  scale: number,
+): void {
+  context.fillStyle = '#030806';
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+
+  for (let y = 0; y < dungeon.config.height; y += 1) {
+    for (let x = 0; x < dungeon.config.width; x += 1) {
+      const state = exploration.get({ x, y });
+      if (state === 'unknown') continue;
+      const wall = dungeon.tiles[y][x] === 'wall';
+      context.fillStyle = state === 'visible'
+        ? wall ? '#68746c' : '#9ab6a3'
+        : wall ? '#1a2921' : '#294236';
+      context.fillRect(x * scale, y * scale, scale, scale);
+    }
+  }
+
+  if (!hasRelic && exploration.isExplored(dungeon.objective)) {
+    drawMinimapMarker(context, dungeon.objective, scale, '#48e5c0');
+  }
+  if (exploration.isExplored(dungeon.extraction)) {
+    drawMinimapMarker(context, dungeon.extraction, scale, '#e8b45d');
+  }
+  drawMinimapMarker(context, player, scale, '#ffffff');
+}
+
+function drawMinimapMarker(context: CanvasRenderingContext2D, point: Point, scale: number, color: string): void {
+  context.fillStyle = color;
+  context.fillRect(point.x * scale + 1, point.y * scale + 1, Math.max(2, scale - 2), Math.max(2, scale - 2));
 }
 
 function distance(a: Position, b: Position): number {
