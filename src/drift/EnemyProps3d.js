@@ -15,5 +15,7 @@ export function buildEnemyMeshes() {
     guard.addSphere([0, 1.58, 0], 0.25, [0.14, 0.18, 0.16], 0.06, 10, 6);
     guard.addSphere([0, 1.6, 0.22], 0.045, [0.9, 0.56, 0.08], 0.8, 8, 5);
     guard.addBox([0.38, 0.78, 0], [0.06, 0.48, 0.06], [0.1, 0.13, 0.11], 0.1, 0.2);
-    return { crawler, guard };
+    // These hybrid meshes mix curved and hard-surface primitives. A full planar pass keeps
+    // every plate and limb textured instead of leaving later primitives at UV origin.
+    return { crawler: crawler.build({ planarUvs: true }), guard: guard.build({ planarUvs: true }) };
 }

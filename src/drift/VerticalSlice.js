@@ -172,10 +172,10 @@ export async function startVerticalSlice() {
         medCache: renderer.createMesh(containerProps.medCache),
     };
     const enemyMeshes = {
-        crawler: renderer.createMesh(enemyProps.crawler.build()),
-        guard: renderer.createMesh(enemyProps.guard.build()),
+        crawler: renderer.createMesh(enemyProps.crawler),
+        guard: renderer.createMesh(enemyProps.guard),
     };
-    const apexMesh = renderer.createMesh(buildApex().build());
+    const apexMesh = renderer.createMesh(buildApex().build({ planarUvs: true }));
     const objectiveTextures = buildObjectiveTextureMeshes();
     const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
     const texturedExtractionHatch = renderer.createMesh(objectiveTextures.extractionHatch);

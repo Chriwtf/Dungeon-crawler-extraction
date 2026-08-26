@@ -1,7 +1,8 @@
 import { MeshBuilder } from '@driftengine/core';
+import type { MeshData } from '@driftengine/core';
 import type { EnemyKind } from '../game/core/EnemyDirector';
 
-export function buildEnemyMeshes(): Record<EnemyKind, MeshBuilder> {
+export function buildEnemyMeshes(): Record<EnemyKind, MeshData> {
   const crawler = new MeshBuilder();
   crawler.addSphere([0, 0.34, 0], 0.34, [0.18, 0.22, 0.14], 0.08, 10, 6);
   crawler.addSphere([0, 0.42, 0.27], 0.18, [0.25, 0.31, 0.18], 0.1, 8, 5);
@@ -19,5 +20,7 @@ export function buildEnemyMeshes(): Record<EnemyKind, MeshBuilder> {
   guard.addSphere([0, 1.6, 0.22], 0.045, [0.9, 0.56, 0.08], 0.8, 8, 5);
   guard.addBox([0.38, 0.78, 0], [0.06, 0.48, 0.06], [0.1, 0.13, 0.11], 0.1, 0.2);
 
-  return { crawler, guard };
+  // These hybrid meshes mix curved and hard-surface primitives. A full planar pass keeps
+  // every plate and limb textured instead of leaving later primitives at UV origin.
+  return { crawler: crawler.build({ planarUvs: true }), guard: guard.build({ planarUvs: true }) };
 }
