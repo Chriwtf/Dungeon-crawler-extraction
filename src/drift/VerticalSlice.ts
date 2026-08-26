@@ -13,6 +13,7 @@ import { loadModule } from 'driftscript';
 import { ApexDirector, type ApexMode } from '../game/core/ApexDirector';
 import { DoorSystem } from '../game/core/DoorSystem';
 import { EnemyDirector, type EnemySnapshot } from '../game/core/EnemyDirector';
+import { PlayerCombat } from '../game/core/PlayerCombat';
 import { placeRunLoot } from '../game/core/RunLoot';
 import { propagateNoise } from '../game/core/NoiseSystem';
 import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
@@ -52,6 +53,7 @@ interface Hud {
   readonly objective: HTMLElement;
   readonly loot: HTMLElement;
   readonly stash: HTMLElement;
+  readonly health: HTMLElement;
   readonly pressure: HTMLElement;
   readonly echo: HTMLElement;
   readonly facility: HTMLElement;
@@ -93,6 +95,7 @@ export async function startVerticalSlice(): Promise<void> {
       <p id="objective-readout">OBJECTIVE: RECOVER THE RELIC</p>
       <p id="loot-readout">LOOT: 0 CR // LOAD: 0 KG</p>
       <p id="stash-readout">STASH: 0 CR // EXTRACT TO BANK</p>
+      <p id="health-readout">VITALS: 36 / 36 // MEDKITS: 2</p>
       <p id="pressure-readout">THREAT: 0% // NOISE: 0</p>
       <p id="echo-readout">ECHO: SILENT</p>
       <p id="facility-readout">FACILITY: NORMAL</p>
@@ -102,7 +105,7 @@ export async function startVerticalSlice(): Promise<void> {
       <p id="interaction-readout"></p>
     </section>
     <section class="run-help">
-      <p>W / S: MOVE &nbsp; Q: TURN LEFT &nbsp; E: OPEN / TURN RIGHT &nbsp; F: TORCH &nbsp; X: EXTRACT</p>
+      <p>W / S: MOVE &nbsp; Q / E: TURN &nbsp; SPACE: ATTACK &nbsp; H: HEAVY &nbsp; G: GUARD &nbsp; D: DODGE &nbsp; I: MEDKIT</p>
       <p>Each action advances the dungeon.</p>
       <p id="backend-readout"></p>
     </section>
@@ -120,6 +123,7 @@ export async function startVerticalSlice(): Promise<void> {
     objective: requireElement('#objective-readout'),
     loot: requireElement('#loot-readout'),
     stash: requireElement('#stash-readout'),
+    health: requireElement('#health-readout'),
     pressure: requireElement('#pressure-readout'),
     echo: requireElement('#echo-readout'),
     facility: requireElement('#facility-readout'),
@@ -259,6 +263,7 @@ export async function startVerticalSlice(): Promise<void> {
   const player: Position = { x: startPosition.x, z: startPosition.z };
   let facing = 1;
   const simulation = new RunSimulation(RUN_SEED);
+  const combat = new PlayerCombat(RUN_SEED);
   const atmosphereModule = loadModule(atmosphereScript as unknown as Record<string, unknown>);
   const atmosphereState = (atmosphereModule.exports.createAlarmState as () => AlarmState)();
   const updateAtmosphere = atmosphereModule.exports.update as (state: AlarmState, hunting: boolean, pressure: number, dt: number) => void;
@@ -310,6 +315,9 @@ export async function startVerticalSlice(): Promise<void> {
 
   const updateStash = () => {
     hud.stash.textContent = `STASH: ${progression.credits} CR // EXTRACT TO BANK`;
+  };
+  const updateCombatHud = () => {
+    hud.health.textContent = `VITALS: ${combat.hp} / ${combat.maxHp} // MEDKITS: ${combat.medkits}`;
   };
   const updateDoorPrompt = () => {
     const [dx, dz] = CARDINALS[facing];
@@ -363,7 +371,7 @@ export async function startVerticalSlice(): Promise<void> {
     renderUpgradePanel();
   });
 
-  const advanceTurn = (action: 'move' | 'turn' | 'blocked' | 'torch' | 'door', message: string) => {
+  const advanceTurn = (action: 'move' | 'turn' | 'blocked' | 'torch' | 'door' | 'attack' | 'heavyAttack' | 'guard' | 'dodge' | 'item', message: string) => {
     const event = simulation.advance(action, message, lootWeight, cargoNoiseReduction);
     const previousFacilityMode = facilityMode;
     updateFacility(facilityState, event.turn, event.pressure, event.noiseLevel);
@@ -377,6 +385,8 @@ export async function startVerticalSlice(): Promise<void> {
     apexMode = apexEvent.mode;
     const enemyEvent = enemies.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, torchOn, (point) => doorSystem.isBlocking(point));
     syncEnemyNodes(enemyEvent.enemies);
+    const incomingDamage = enemyEvent.attacks.reduce((total, attack) => total + attack.damage, 0);
+    const combatEvent = combat.resolveIncoming(incomingDamage);
     app.dataset.apexMode = apexMode;
     hud.turn.textContent = `TURN ${String(event.turn).padStart(3, '0')}`;
     hud.pressure.textContent = `THREAT: ${event.pressure}% // NOISE: ${event.noiseLevel}`;
@@ -385,13 +395,24 @@ export async function startVerticalSlice(): Promise<void> {
       : `ECHO: ${pulse.reachedTiles} TILES // RANGE: ${pulse.radiusTiles * STEP_METRES}M`;
     hud.facility.textContent = `FACILITY: ${facilityLabel(facilityMode)}`;
     hud.apex.textContent = `STALKER: ${apexEvent.mode.toUpperCase()}`;
-    hud.message.textContent = apexEvent.message ?? enemyEvent.message ?? (facilityMode !== previousFacilityMode
+    hud.message.textContent = apexEvent.message ?? (combatEvent.avoided
+      ? 'YOU DODGE THE INCOMING STRIKE.'
+      : combatEvent.guarded
+        ? `GUARD ABSORBS THE BLOW. -${combatEvent.damage} VITALS.`
+        : combatEvent.damage > 0
+          ? `HOSTILE HIT. -${combatEvent.damage} VITALS.`
+          : enemyEvent.message) ?? (facilityMode !== previousFacilityMode
       ? facilityMessage(facilityMode)
       : event.message);
+    updateCombatHud();
     if (apexEvent.captured) {
       completed = true;
       hud.objective.textContent = 'RUN LOST // CARGO ABANDONED';
       hud.message.textContent = 'THE APEX FOUND YOU. NOTHING WAS BANKED.';
+    } else if (combatEvent.defeated) {
+      completed = true;
+      hud.objective.textContent = 'RUN LOST // OPERATOR DOWN';
+      hud.message.textContent = 'YOUR VITALS FLATLINE. NOTHING WAS BANKED.';
     }
     updateDoorPrompt();
     updateExploration();
@@ -413,6 +434,53 @@ export async function startVerticalSlice(): Promise<void> {
       torchOn = !torchOn;
       hud.visibility.textContent = torchOn ? `TORCH: ON // SIGHT: ${torchSight}M` : 'TORCH: OFF // SIGHT: 2M';
       advanceTurn('torch', torchOn ? 'The torch wakes with a dry electrical click.' : 'You kill the torch. The dark closes around you.');
+      return;
+    }
+
+    if (key === ' ' || key === 'h') {
+      const heavy = key === 'h';
+      const [dx, dz] = CARDINALS[facing];
+      const target = worldToPoint(dungeon, player.x + dx * STEP_METRES, player.z + dz * STEP_METRES);
+      const strike = combat.attack(heavy);
+      const result = strike.hit ? enemies.damageAt(target, strike.damage) : null;
+      const message = !strike.hit
+        ? 'HEAVY STRIKE MISSES. THE IMPACT RINGS THROUGH THE FACILITY.'
+        : result === null
+          ? 'YOUR STRIKE CUTS THROUGH EMPTY AIR.'
+          : result.defeated
+            ? `${result.kind.toUpperCase()} NEUTRALIZED.`
+            : `${result.kind.toUpperCase()} HIT. ${result.remainingHp} VITALS REMAIN.`;
+      advanceTurn(heavy ? 'heavyAttack' : 'attack', message);
+      return;
+    }
+
+    if (key === 'g') {
+      combat.guard();
+      advanceTurn('guard', 'YOU BRACE FOR THE NEXT IMPACT.');
+      return;
+    }
+
+    if (key === 'd') {
+      combat.dodge();
+      const [dx, dz] = CARDINALS[facing];
+      const retreat = { x: player.x - dx * STEP_METRES, z: player.z - dz * STEP_METRES };
+      if (isWalkable(dungeon, doorSystem, enemies, retreat)) {
+        player.x = retreat.x;
+        player.z = retreat.z;
+        advanceTurn('dodge', 'YOU SLIP BACK AND PREPARE TO DODGE.');
+      } else {
+        advanceTurn('dodge', 'NO ROOM TO RETREAT. YOU PREPARE TO DODGE.');
+      }
+      return;
+    }
+
+    if (key === 'i') {
+      const recovered = combat.useMedkit();
+      if (recovered === 0) {
+        hud.message.textContent = combat.medkits === 0 ? 'NO MEDKITS REMAIN.' : 'VITALS ALREADY STABLE.';
+        return;
+      }
+      advanceTurn('item', `MEDKIT APPLIED. +${recovered} VITALS.`);
       return;
     }
 
@@ -496,13 +564,14 @@ export async function startVerticalSlice(): Promise<void> {
     }
     if (upgradePanelOpen) return;
     const mapped = key === 'arrowup' ? 'w' : key === 'arrowdown' ? 's' : key === 'arrowleft' ? 'q' : key === 'arrowright' ? 'e' : key;
-    if (mapped === 'w' || mapped === 's' || mapped === 'q' || mapped === 'e' || mapped === 'f' || mapped === 'x') {
+    if (mapped === 'w' || mapped === 's' || mapped === 'q' || mapped === 'e' || mapped === 'f' || mapped === 'x' || mapped === ' ' || mapped === 'h' || mapped === 'g' || mapped === 'd' || mapped === 'i') {
       event.preventDefault();
       act(mapped);
     }
   });
 
   updateCamera();
+  updateCombatHud();
   updateDoorPrompt();
   updateExploration();
   startLoop({

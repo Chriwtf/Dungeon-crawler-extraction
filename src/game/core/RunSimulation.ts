@@ -1,6 +1,6 @@
 import { TurnEngine } from './TurnEngine';
 
-export type RunAction = 'move' | 'turn' | 'blocked' | 'torch' | 'door';
+export type RunAction = 'move' | 'turn' | 'blocked' | 'torch' | 'door' | 'attack' | 'heavyAttack' | 'guard' | 'dodge' | 'item';
 
 export type RunEvent = {
   readonly turn: number;
@@ -16,6 +16,11 @@ const ACTION_NOISE: Record<RunAction, number> = {
   blocked: 2,
   torch: 2,
   door: 4,
+  attack: 2,
+  heavyAttack: 5,
+  guard: 0,
+  dodge: 1,
+  item: 1,
 };
 
 const PRESSURE_HINTS = [

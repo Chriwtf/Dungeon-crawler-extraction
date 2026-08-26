@@ -5,6 +5,11 @@ const ACTION_NOISE = {
     blocked: 2,
     torch: 2,
     door: 4,
+    attack: 2,
+    heavyAttack: 5,
+    guard: 0,
+    dodge: 1,
+    item: 1,
 };
 const PRESSURE_HINTS = [
     'The ventilation hum changes pitch.',

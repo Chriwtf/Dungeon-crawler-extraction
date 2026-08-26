@@ -70,6 +70,7 @@ export class EnemyDirector {
     }
     advance(dungeon, player, pulse, torchOn, isBlocked) {
         let message = null;
+        const attacks = [];
         for (const entity of this.world.query(Position, Stats, State)) {
             const position = readPosition(this.world, entity);
             const stats = readStats(this.world, entity);
@@ -91,6 +92,7 @@ export class EnemyDirector {
             if (nextState === 'return')
                 this.setTarget(entity, { x: Number(this.world.read(entity, Position, 'homeX')), y: Number(this.world.read(entity, Position, 'homeY')) });
             if (nextState === 'attack') {
+                attacks.push({ id: entity, kind: stats.kind, damage: stats.damage });
                 message ?? (message = stats.kind === 'crawler' ? 'A CRAWLER SKITTERS INTO STRIKING RANGE.' : 'A GUARD BLOCKS THE CORRIDOR.');
                 continue;
             }
@@ -99,7 +101,22 @@ export class EnemyDirector {
             if (state !== nextState && nextState === 'chase')
                 message ?? (message = stats.kind === 'crawler' ? 'A CRAWLER HEARS YOU.' : 'A GUARD TURNS TOWARD THE LIGHT.');
         }
-        return { enemies: this.snapshots(), message };
+        return { enemies: this.snapshots(), attacks, message };
+    }
+    damageAt(point, damage) {
+        for (const entity of this.world.query(Position, Stats, State)) {
+            if (!samePoint(readPosition(this.world, entity), point))
+                continue;
+            const stats = readStats(this.world, entity);
+            const remainingHp = Math.max(0, stats.hp - Math.max(0, Math.floor(damage)));
+            this.world.write(entity, Stats, 'hp', remainingHp);
+            if (remainingHp === 0) {
+                this.minds.delete(entity);
+                this.world.destroy(entity);
+            }
+            return { kind: stats.kind, remainingHp, defeated: remainingHp === 0 };
+        }
+        return null;
     }
     isOccupied(point) {
         return this.snapshots().some((enemy) => samePoint(enemy.position, point));
