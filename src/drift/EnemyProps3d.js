@@ -20,7 +20,7 @@ export function buildEnemyMeshes() {
 export function buildApexMesh() {
     const apex = new CharacterMeshBuilder();
     const material = [0.06, 0.08, 0.94, 0.92];
-    addHumanoid(apex, { torso: material, head: material, arm: material, leg: material }, [0.42, 0.46, 0.48], { height: 2.02, shoulder: 0.28, torso: 0.2, limb: 0.07, stance: 0.13 });
+    addHumanoid(apex, { torso: material, head: material, arm: material, leg: material }, [1, 0.88, 0.8], { height: 2.02, shoulder: 0.28, torso: 0.2, limb: 0.07, stance: 0.13 });
     apex.addBox([0, 1.83, 0.15], [0.14, 0.1, 0.06], [0.38, 0.42, 0.45], material);
     apex.addBox([-0.33, 1.08, 0.03], [0.035, 0.52, 0.035], [0.3, 0.34, 0.38], material);
     apex.addBox([0.33, 1.08, 0.03], [0.035, 0.52, 0.035], [0.3, 0.34, 0.38], material);

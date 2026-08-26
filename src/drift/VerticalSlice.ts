@@ -224,6 +224,7 @@ export async function startVerticalSlice(): Promise<void> {
     guard: renderer.createMesh(enemyProps.guard),
   };
   const apexMesh = renderer.createMesh(buildApexMesh());
+  const apexEyes = renderer.createMesh(buildApexEyes().build());
   const objectiveTextures = buildObjectiveTextureMeshes();
   const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
   const texturedExtractionHatch = renderer.createMesh(objectiveTextures.extractionHatch);
@@ -311,6 +312,7 @@ export async function startVerticalSlice(): Promise<void> {
       }
       const position = pointToWorld(dungeon, enemy.position);
       node.setPosition(position.x, 0, position.z);
+      faceNodeToward(node, position, player);
     }
   };
   syncEnemyNodes(enemies.snapshots());
@@ -415,6 +417,7 @@ export async function startVerticalSlice(): Promise<void> {
     const apexEvent = apex.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, event.pressure, event.turn, torchOn);
     const apexWorld = pointToWorld(dungeon, apexEvent.position);
     apexNode.setPosition(apexWorld.x, 0, apexWorld.z);
+    faceNodeToward(apexNode, apexWorld, player);
     apexPosition = apexEvent.position;
     apexVisible = apexEvent.visible;
     apexMode = apexEvent.mode;
@@ -754,7 +757,11 @@ export async function startVerticalSlice(): Promise<void> {
         if (!openedContainers.has(container.id) && exploration.isVisible(container.point)) renderer.drawMesh(containerMeshes[container.kind], containerNodes[index].worldMatrix);
       }
       renderer.setSurfaceTexture(apexTexture, 1, 1);
-      if (apexVisible && exploration.isVisible(apexPosition)) renderer.drawMesh(apexMesh, apexNode.worldMatrix);
+      if (apexVisible && exploration.isVisible(apexPosition)) {
+        renderer.drawMesh(apexMesh, apexNode.worldMatrix);
+        renderer.setSurfaceTexture(null);
+        renderer.drawMesh(apexEyes, apexNode.worldMatrix);
+      }
       for (const enemy of enemies.snapshots()) {
         if (!exploration.isVisible(enemy.position)) continue;
         const node = enemyNodes.get(enemy.id);
@@ -794,6 +801,17 @@ function buildRelicCore(): MeshBuilder {
   mesh.addCylinder([0, 1.05, 0], 0.18, 0.42, 'y', [0.08, 0.95, 0.68], 1, 6, 0.65);
   mesh.addSphere([0, 1.48, 0], 0.22, [0.3, 1, 0.82], 1, 12, 6);
   return mesh;
+}
+
+function buildApexEyes(): MeshBuilder {
+  const mesh = new MeshBuilder();
+  mesh.addSphere([-0.075, 1.61, 0.14], 0.035, [1, 0.04, 0.01], 1, 8, 5);
+  mesh.addSphere([0.075, 1.61, 0.14], 0.035, [1, 0.04, 0.01], 1, 8, 5);
+  return mesh;
+}
+
+function faceNodeToward(node: SceneNode, origin: Position, target: Position): void {
+  node.setRotationAxisAngle(0, 1, 0, Math.atan2(target.x - origin.x, target.z - origin.z));
 }
 
 function buildEmergencyLamp(): MeshBuilder {
