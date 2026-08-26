@@ -142,6 +142,12 @@ canvas {
   min-height: 3.2em;
 }
 
+#interaction-readout {
+  min-height: 1.55em;
+  color: #f0c66f;
+  font-weight: 700;
+}
+
 #apex-readout {
   color: #ff8a68;
 }

@@ -1,3 +1,5 @@
+import { createDoorLayout, type DungeonDoor } from './DoorLayout';
+
 export const BASE_TILE_SIZE = 24;
 export const BASE_MAP_WIDTH = 32;
 export const BASE_MAP_HEIGHT = 20;
@@ -21,6 +23,7 @@ export type DungeonConfig = {
 export type DungeonData = {
   tiles: TileGrid;
   rooms: readonly RoomData[];
+  doors: readonly DungeonDoor[];
   playerStart: Point;
   objective: Point;
   extraction: Point;
@@ -205,6 +208,7 @@ export const generateDungeon = (config: DungeonConfig, seed?: number): DungeonDa
     id: `room-${index}`,
     archetype: archetypes[index],
   }));
+  const doors = createDoorLayout(tiles, roomData, random);
 
   tiles[objective.y][objective.x] = 'objective';
   tiles[extraction.y][extraction.x] = 'extraction';
@@ -212,6 +216,7 @@ export const generateDungeon = (config: DungeonConfig, seed?: number): DungeonDa
   return {
     tiles,
     rooms: roomData,
+    doors,
     playerStart,
     objective,
     extraction,

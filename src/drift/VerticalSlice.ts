@@ -11,6 +11,7 @@ import {
 import type { PointLightSource } from '@driftengine/core';
 import { loadModule } from 'driftscript';
 import { ApexDirector, type ApexMode } from '../game/core/ApexDirector';
+import { DoorSystem } from '../game/core/DoorSystem';
 import { placeRunLoot } from '../game/core/RunLoot';
 import { propagateNoise } from '../game/core/NoiseSystem';
 import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
@@ -19,6 +20,7 @@ import { generateDungeon } from '../game/world/DungeonGenerator';
 import { buildDungeonMeshes, pointToWorld, worldToPoint } from './ProceduralDungeon3d';
 import { buildObjectiveTextureMeshes } from './ObjectiveTextureMeshes';
 import { buildLootPropMeshes } from './LootProps3d';
+import { buildDungeonDoor } from './DoorProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
@@ -53,6 +55,7 @@ interface Hud {
   readonly apex: HTMLElement;
   readonly visibility: HTMLElement;
   readonly message: HTMLElement;
+  readonly interaction: HTMLElement;
   readonly backend: HTMLElement;
 }
 
@@ -92,9 +95,10 @@ export async function startVerticalSlice(): Promise<void> {
       <p id="apex-readout">STALKER: DORMANT</p>
       <p id="visibility-readout">TORCH: ON // SIGHT: 8M</p>
       <p id="message-readout">The air is still. Move carefully.</p>
+      <p id="interaction-readout"></p>
     </section>
     <section class="run-help">
-      <p>W / S: MOVE &nbsp; Q / E: TURN &nbsp; F: TORCH &nbsp; X: EXTRACT &nbsp; U: UPGRADES</p>
+      <p>W / S: MOVE &nbsp; Q: TURN LEFT &nbsp; E: OPEN / TURN RIGHT &nbsp; F: TORCH &nbsp; X: EXTRACT</p>
       <p>Each action advances the dungeon.</p>
       <p id="backend-readout"></p>
     </section>
@@ -117,6 +121,7 @@ export async function startVerticalSlice(): Promise<void> {
     apex: requireElement('#apex-readout'),
     visibility: requireElement('#visibility-readout'),
     message: requireElement('#message-readout'),
+    interaction: requireElement('#interaction-readout'),
     backend: requireElement('#backend-readout'),
   };
   const upgradePanel = requireElement<HTMLElement>('#upgrade-panel');
@@ -179,6 +184,7 @@ export async function startVerticalSlice(): Promise<void> {
   const extractionLocked = renderer.createMesh(buildExtractionSignal([1, 0.08, 0.05]).build());
   const extractionReady = renderer.createMesh(buildExtractionSignal([0.1, 1, 0.45]).build());
   const emergencyLamp = renderer.createMesh(buildEmergencyLamp().build());
+  const dungeonDoor = renderer.createMesh(buildDungeonDoor().build());
   const apexMesh = renderer.createMesh(buildApex().build());
   const objectiveTextures = buildObjectiveTextureMeshes();
   const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
@@ -217,6 +223,14 @@ export async function startVerticalSlice(): Promise<void> {
     const position = pointToWorld(dungeon, room.center);
     const node = new SceneNode();
     node.setPosition(position.x, 0, position.z);
+    return node;
+  });
+  const doorSystem = new DoorSystem(dungeon.doors);
+  const doorNodes = dungeon.doors.map((door) => {
+    const position = pointToWorld(dungeon, door.point);
+    const node = new SceneNode();
+    node.setPosition(position.x, 0, position.z);
+    node.setRotationAxisAngle(0, 1, 0, door.rotation);
     return node;
   });
   const apexNode = new SceneNode();
@@ -262,6 +276,22 @@ export async function startVerticalSlice(): Promise<void> {
   const updateStash = () => {
     hud.stash.textContent = `STASH: ${progression.credits} CR // EXTRACT TO BANK`;
   };
+  const updateDoorPrompt = () => {
+    const [dx, dz] = CARDINALS[facing];
+    const target = worldToPoint(dungeon, player.x + dx * STEP_METRES, player.z + dz * STEP_METRES);
+    const door = doorSystem.getAt(target);
+    if (door === undefined || door.state === 'open') {
+      hud.interaction.textContent = '';
+      return;
+    }
+    hud.interaction.textContent = door.state === 'closed'
+      ? 'E - OPEN DOOR // +4 NOISE'
+      : door.state === 'locked'
+        ? `LOCKED // REQUIRES ${door.requiredKey ?? 'KEY'}`
+        : door.state === 'sealed'
+          ? 'SEALED'
+          : 'UNMARKED STONE';
+  };
   const renderUpgradePanel = () => {
     upgradeBalance.textContent = `AVAILABLE: ${progression.credits} CR`;
     upgradeOptions.innerHTML = (Object.keys(UPGRADE_DEFINITIONS) as Array<keyof typeof UPGRADE_DEFINITIONS>).map((key) => {
@@ -292,7 +322,7 @@ export async function startVerticalSlice(): Promise<void> {
     renderUpgradePanel();
   });
 
-  const advanceTurn = (action: 'move' | 'turn' | 'blocked' | 'torch', message: string) => {
+  const advanceTurn = (action: 'move' | 'turn' | 'blocked' | 'torch' | 'door', message: string) => {
     const event = simulation.advance(action, message, lootWeight, cargoNoiseReduction);
     const previousFacilityMode = facilityMode;
     updateFacility(facilityState, event.turn, event.pressure, event.noiseLevel);
@@ -319,6 +349,7 @@ export async function startVerticalSlice(): Promise<void> {
       hud.objective.textContent = 'RUN LOST // CARGO ABANDONED';
       hud.message.textContent = 'THE APEX FOUND YOU. NOTHING WAS BANKED.';
     }
+    updateDoorPrompt();
   };
 
   const completeExtraction = () => {
@@ -351,6 +382,17 @@ export async function startVerticalSlice(): Promise<void> {
       return;
     }
 
+    if (key === 'e') {
+      const [dx, dz] = CARDINALS[facing];
+      const interaction = doorSystem.interact(worldToPoint(dungeon, player.x + dx * STEP_METRES, player.z + dz * STEP_METRES));
+      if (interaction !== undefined) {
+        if (interaction.opened) advanceTurn('door', interaction.message);
+        else hud.message.textContent = interaction.message;
+        updateDoorPrompt();
+        return;
+      }
+    }
+
     if (key === 'q' || key === 'e') {
       facing = (facing + (key === 'q' ? 3 : 1)) % CARDINALS.length;
       advanceTurn('turn', 'Somewhere beyond the walls, metal shifts against stone.');
@@ -361,7 +403,7 @@ export async function startVerticalSlice(): Promise<void> {
     if (direction === 0) return;
     const [dx, dz] = CARDINALS[facing];
     const next = { x: player.x + dx * STEP_METRES * direction, z: player.z + dz * STEP_METRES * direction };
-    if (!isWalkable(dungeon, next)) {
+    if (!isWalkable(dungeon, doorSystem, next)) {
       advanceTurn('blocked', 'The way is sealed. The sound of your attempt travels farther than it should.');
       return;
     }
@@ -412,6 +454,7 @@ export async function startVerticalSlice(): Promise<void> {
   });
 
   updateCamera();
+  updateDoorPrompt();
   startLoop({
     simulate(dt) {
       previousRelicSpin = relicSpin;
@@ -427,6 +470,7 @@ export async function startVerticalSlice(): Promise<void> {
       extractionNode.updateWorld();
       for (const node of lootNodes) node.updateWorld();
       for (const node of roomPropNodes) node.updateWorld();
+      for (const node of doorNodes) node.updateWorld();
       apexNode.updateWorld();
       for (const node of emergencyNodes) node.updateWorld();
       updateCamera();
@@ -508,6 +552,10 @@ export async function startVerticalSlice(): Promise<void> {
       for (let index = 0; index < dungeon.rooms.length; index += 1) {
         const room = dungeon.rooms[index];
         renderer.drawMesh(roomMeshes[room.archetype], roomPropNodes[index].worldMatrix);
+      }
+      for (let index = 0; index < dungeon.doors.length; index += 1) {
+        if (!doorSystem.isBlocking(dungeon.doors[index].point)) continue;
+        renderer.drawMesh(dungeonDoor, doorNodes[index].worldMatrix);
       }
       for (const node of emergencyNodes) renderer.drawMesh(emergencyLamp, node.worldMatrix);
       if (!hasRelic) {
@@ -594,9 +642,9 @@ function buildExtractionSignal(color: [number, number, number]): MeshBuilder {
   return mesh;
 }
 
-function isWalkable(dungeon: ReturnType<typeof generateDungeon>, position: Position): boolean {
+function isWalkable(dungeon: ReturnType<typeof generateDungeon>, doors: DoorSystem, position: Position): boolean {
   const point = worldToPoint(dungeon, position.x, position.z);
-  return dungeon.tiles[point.y]?.[point.x] !== undefined && dungeon.tiles[point.y][point.x] !== 'wall';
+  return dungeon.tiles[point.y]?.[point.x] !== undefined && dungeon.tiles[point.y][point.x] !== 'wall' && !doors.isBlocking(point);
 }
 
 function selectEmergencyPositions(dungeon: ReturnType<typeof generateDungeon>, count: number): Array<{ x: number; y: number }> {

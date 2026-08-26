@@ -1,3 +1,4 @@
+import { createDoorLayout } from './DoorLayout';
 export const BASE_TILE_SIZE = 24;
 export const BASE_MAP_WIDTH = 32;
 export const BASE_MAP_HEIGHT = 20;
@@ -130,11 +131,13 @@ export const generateDungeon = (config, seed) => {
         id: `room-${index}`,
         archetype: archetypes[index],
     }));
+    const doors = createDoorLayout(tiles, roomData, random);
     tiles[objective.y][objective.x] = 'objective';
     tiles[extraction.y][extraction.x] = 'extraction';
     return {
         tiles,
         rooms: roomData,
+        doors,
         playerStart,
         objective,
         extraction,
