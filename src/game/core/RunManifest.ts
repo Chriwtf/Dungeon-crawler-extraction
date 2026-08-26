@@ -6,9 +6,9 @@ import { generateDungeon, type DungeonConfig } from '../world/DungeonGenerator.j
 export const RUN_SEED = 827491;
 
 export const VERTICAL_SLICE_DUNGEON_CONFIG: DungeonConfig = {
-  width: 20,
-  height: 16,
-  targetRooms: 12,
+  width: 26,
+  height: 20,
+  targetRooms: 10,
   minRoomSize: 4,
   maxRoomSize: 6,
 };

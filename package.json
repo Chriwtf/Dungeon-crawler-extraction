@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "validate:seeds": "npm run build && node scripts/validate-run-seeds.mjs",
+    "validate:vertical-slice": "npm run build && node scripts/validate-run-seeds.mjs && node scripts/validate-vertical-slice.mjs",
     "preview": "vite preview",
     "assets:environment": "node scripts/build-textured-environment.mjs"
   },

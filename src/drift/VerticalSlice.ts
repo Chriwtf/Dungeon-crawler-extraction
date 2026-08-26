@@ -121,7 +121,7 @@ export async function startVerticalSlice(): Promise<void> {
     </section>
     <section class="run-help">
       <p>W/S MOVE | Q/E TURN | SPACE STRIKE | H HEAVY | G GUARD | D DODGE | I MEDKIT</p>
-      <p>Every action draws the dungeon closer.</p>
+      <p>Every action draws the dungeon closer. R: NEW RUN</p>
       <p id="backend-readout"></p>
     </section>
     <section id="upgrade-panel" class="upgrade-panel" hidden aria-label="Upgrade terminal">
@@ -159,6 +159,7 @@ export async function startVerticalSlice(): Promise<void> {
   let upgradePanelOpen = false;
   app.dataset.facilityMode = 'normal';
   app.dataset.relicState = 'unsecured';
+  app.dataset.runPhase = 'exploration';
 
   const { renderer, backend, reason } = await createRenderer(canvas, {
     maxDevicePixelRatio: 1.75,
@@ -330,6 +331,7 @@ export async function startVerticalSlice(): Promise<void> {
   let apexMode: ApexMode = 'dormant';
   let facilityMode = 0;
   let hasRelic = false;
+  let runPhase: 'exploration' | 'escape' = 'exploration';
   let completed = false;
   let lootValue = 0;
   let lootWeight = 0;
@@ -607,6 +609,8 @@ export async function startVerticalSlice(): Promise<void> {
     const recoveredRelic = !hasRelic && distance(player, relicPosition) < 1.2;
     if (recoveredRelic) {
       hasRelic = true;
+      runPhase = 'escape';
+      app.dataset.runPhase = runPhase;
       secureRelic(relicState);
       hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION // SIGNAL ACTIVE';
       app.dataset.relicState = 'secured';
@@ -640,6 +644,10 @@ export async function startVerticalSlice(): Promise<void> {
 
   addEventListener('keydown', (event) => {
     const key = event.key.toLowerCase();
+    if (key === 'r' && completed) {
+      location.reload();
+      return;
+    }
     if (key === 'u' || key === 'escape') {
       if (key === 'u' || upgradePanelOpen) toggleUpgradePanel();
       return;
