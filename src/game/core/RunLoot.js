@@ -1,4 +1,4 @@
-import { ROOM_ARCHETYPES } from '../world/RoomArchetypes';
+import { ROOM_ARCHETYPES } from '../world/RoomArchetypes.js';
 const LOOT_TABLE = [
     { kind: 'document', name: 'Classified dossier', value: 160, weight: 1 },
     { kind: 'sample', name: 'Biological sample', value: 300, weight: 2 },

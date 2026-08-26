@@ -1,6 +1,6 @@
-import { createDoorLayout, type DungeonDoor } from './DoorLayout';
-import { carveDungeonTopology, type DungeonConnection } from './DungeonTopology';
-import { assignRoomArchetypes, type RoomArchetypeId } from './RoomArchetypes';
+import { createDoorLayout, type DungeonDoor } from './DoorLayout.js';
+import { carveDungeonTopology, type DungeonConnection } from './DungeonTopology.js';
+import { assignRoomArchetypes, type RoomArchetypeId } from './RoomArchetypes.js';
 
 export const BASE_TILE_SIZE = 24;
 export const BASE_MAP_WIDTH = 32;

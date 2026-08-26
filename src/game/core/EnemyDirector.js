@@ -1,8 +1,8 @@
 import { World, defineComponent } from '@driftengine/entities';
 import { loadModule } from 'driftscript';
 import { hasLineOfSight, findStepToward, manhattanDistance, samePoint } from '../world/DungeonPathfinding';
-import { ROOM_ARCHETYPES } from '../world/RoomArchetypes';
 import { isNoiseAudibleAt } from './NoiseSystem';
+import { planInitialEnemySpawns } from './EnemySpawns';
 import * as enemyBrainScript from '../../drift/scripts/EnemyBrain.drs';
 const Position = defineComponent('EnemyPosition', { x: 'i32', y: 'i32', homeX: 'i32', homeY: 'i32' });
 const Stats = defineComponent('EnemyStats', {
@@ -46,33 +46,8 @@ export class EnemyDirector {
             writable: true,
             value: this.module.exports.advance
         });
-        const random = createSeededRandom(seed ^ 0x9e3779b9);
-        const spawned = new Set();
-        let spawnedCount = 0;
-        for (const room of dungeon.rooms) {
-            if (spawnedCount >= 4)
-                break;
-            const profile = ROOM_ARCHETYPES[room.archetype].enemyProfile;
-            const kind = profile === 'crawler' ? 'crawler' : profile === 'guard' ? 'guard' : undefined;
-            if (kind === undefined || samePoint(room.center, dungeon.playerStart) || random() > ROOM_ARCHETYPES[room.archetype].enemyChance)
-                continue;
-            this.spawn(kind, room.center);
-            spawned.add(kind);
-            spawnedCount += 1;
-        }
-        // The current vertical slice is small; guarantee both authored enemy types are testable.
-        const fallbackRooms = dungeon.rooms.filter((room) => room.archetype !== 'reliquary' && room.archetype !== 'extractionRoom' && !samePoint(room.center, dungeon.playerStart));
-        const requiredKinds = ['crawler', 'guard'];
-        for (let index = 0; index < requiredKinds.length; index += 1) {
-            const kind = requiredKinds[index];
-            if (spawned.has(kind))
-                continue;
-            const room = fallbackRooms[index % fallbackRooms.length];
-            if (room !== undefined && spawnedCount < 4) {
-                this.spawn(kind, room.center);
-                spawnedCount += 1;
-            }
-        }
+        for (const spawn of planInitialEnemySpawns(dungeon, seed))
+            this.spawn(spawn.kind, spawn.point);
     }
     advance(dungeon, player, pulse, torchOn, isBlocked) {
         let message = null;
@@ -185,4 +160,3 @@ function readStats(world, entity) {
 }
 function stateValue(state) { return ['idle', 'investigate', 'chase', 'attack', 'return'].indexOf(state); }
 function stateFromValue(value) { return ['idle', 'investigate', 'chase', 'attack', 'return'][value] ?? 'idle'; }
-function createSeededRandom(seed) { let state = seed >>> 0 || 0x9e3779b9; return () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 4294967296; }; }

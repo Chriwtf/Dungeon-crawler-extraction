@@ -14,11 +14,10 @@ import { ApexDirector, type ApexMode } from '../game/core/ApexDirector';
 import { DoorSystem } from '../game/core/DoorSystem';
 import { EnemyDirector, type EnemySnapshot } from '../game/core/EnemyDirector';
 import { PlayerCombat } from '../game/core/PlayerCombat';
-import { placeRunContainers, type RunContainer } from '../game/core/RunContainers';
-import { placeRunLoot } from '../game/core/RunLoot';
 import { propagateNoise } from '../game/core/NoiseSystem';
 import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
 import { RunSimulation } from '../game/core/RunSimulation';
+import { createRunManifest, RUN_SEED } from '../game/core/RunManifest';
 import { ExplorationMemory } from '../game/world/ExplorationMemory';
 import { generateDungeon, type DungeonData, type Point } from '../game/world/DungeonGenerator';
 import { TILE_METRES, buildDungeonMeshes, pointToWorld, worldToPoint } from './ProceduralDungeon3d';
@@ -48,7 +47,6 @@ import * as relicProtocolScript from './scripts/RelicProtocol.drs';
 const STEP_METRES = 2;
 const EXTRACTION_RANGE = 2.1;
 const PLAYER_HEIGHT = 1.65;
-const RUN_SEED = 827491;
 const CARDINALS = [
   [0, -1],
   [1, 0],
@@ -188,7 +186,8 @@ export async function startVerticalSlice(): Promise<void> {
     fogBaseY: 0,
   });
 
-  const dungeon = generateDungeon({ width: 20, height: 16, targetRooms: 12, minRoomSize: 4, maxRoomSize: 6 }, RUN_SEED);
+  const runManifest = createRunManifest(RUN_SEED);
+  const { dungeon, loot: lootSpawns, containers } = runManifest;
   const exploration = new ExplorationMemory(dungeon);
   const dungeonMeshes = buildDungeonMeshes(dungeon);
   const floor = renderer.createMesh(dungeonMeshes.floor);
@@ -210,8 +209,6 @@ export async function startVerticalSlice(): Promise<void> {
   const relicPosition = pointToWorld(dungeon, dungeon.objective);
   const extractionPosition = pointToWorld(dungeon, dungeon.extraction);
   const startPosition = pointToWorld(dungeon, dungeon.playerStart);
-  const lootSpawns = placeRunLoot(dungeon, RUN_SEED, 5);
-  const containers = placeRunContainers(dungeon);
   const emergencyPositions = selectEmergencyPositions(dungeon, 7).map((point) => pointToWorld(dungeon, point));
   const relicPedestal = renderer.createMesh(buildRelicPedestal().build());
   const relicCore = renderer.createMesh(buildRelicCore().build());

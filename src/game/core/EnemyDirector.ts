@@ -2,11 +2,11 @@ import { World, defineComponent } from '@driftengine/entities';
 import { loadModule } from 'driftscript';
 import type { DungeonData, Point } from '../world/DungeonGenerator';
 import { hasLineOfSight, findStepToward, manhattanDistance, samePoint } from '../world/DungeonPathfinding';
-import { ROOM_ARCHETYPES } from '../world/RoomArchetypes';
 import { isNoiseAudibleAt, type NoisePulse } from './NoiseSystem';
+import { planInitialEnemySpawns, type InitialEnemyKind } from './EnemySpawns';
 import * as enemyBrainScript from '../../drift/scripts/EnemyBrain.drs';
 
-export type EnemyKind = 'crawler' | 'guard';
+export type EnemyKind = InitialEnemyKind;
 export type EnemyState = 'idle' | 'investigate' | 'chase' | 'attack' | 'return';
 
 export type EnemySnapshot = {
@@ -54,33 +54,7 @@ export class EnemyDirector {
   private readonly advanceMind = this.module.exports.advance as (mind: EnemyMind, distance: number, canSee: boolean, heard: boolean, atTarget: boolean, homeDistance: number) => void;
 
   constructor(dungeon: DungeonData, seed: number) {
-    const random = createSeededRandom(seed ^ 0x9e3779b9);
-    const spawned = new Set<EnemyKind>();
-    let spawnedCount = 0;
-    for (const room of dungeon.rooms) {
-      if (spawnedCount >= 4) break;
-      const profile = ROOM_ARCHETYPES[room.archetype].enemyProfile;
-      const kind = profile === 'crawler' ? 'crawler' : profile === 'guard' ? 'guard' : undefined;
-      if (kind === undefined || samePoint(room.center, dungeon.playerStart) || random() > ROOM_ARCHETYPES[room.archetype].enemyChance) continue;
-      this.spawn(kind, room.center);
-      spawned.add(kind);
-      spawnedCount += 1;
-    }
-
-    // The current vertical slice is small; guarantee both authored enemy types are testable.
-    const fallbackRooms = dungeon.rooms.filter((room) =>
-      room.archetype !== 'reliquary' && room.archetype !== 'extractionRoom' && !samePoint(room.center, dungeon.playerStart),
-    );
-    const requiredKinds: readonly EnemyKind[] = ['crawler', 'guard'];
-    for (let index = 0; index < requiredKinds.length; index += 1) {
-      const kind = requiredKinds[index];
-      if (spawned.has(kind)) continue;
-      const room = fallbackRooms[index % fallbackRooms.length];
-      if (room !== undefined && spawnedCount < 4) {
-        this.spawn(kind, room.center);
-        spawnedCount += 1;
-      }
-    }
+    for (const spawn of planInitialEnemySpawns(dungeon, seed)) this.spawn(spawn.kind, spawn.point);
   }
 
   advance(dungeon: DungeonData, player: Point, pulse: NoisePulse, torchOn: boolean, isBlocked: (point: Point) => boolean): EnemyEvent {
@@ -197,4 +171,3 @@ function readStats(world: World, entity: number): Omit<EnemySnapshot, 'id' | 'st
 
 function stateValue(state: EnemyState): number { return ['idle', 'investigate', 'chase', 'attack', 'return'].indexOf(state); }
 function stateFromValue(value: number): EnemyState { return (['idle', 'investigate', 'chase', 'attack', 'return'] as const)[value] ?? 'idle'; }
-function createSeededRandom(seed: number): () => number { let state = seed >>> 0 || 0x9e3779b9; return () => { state ^= state << 13; state ^= state >>> 17; state ^= state << 5; return (state >>> 0) / 0x1_0000_0000; }; }

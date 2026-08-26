@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "validate:seeds": "npm run build && node scripts/validate-run-seeds.mjs",
     "preview": "vite preview",
     "assets:environment": "node scripts/build-textured-environment.mjs"
   },

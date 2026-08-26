@@ -1,6 +1,6 @@
-import { createDoorLayout } from './DoorLayout';
-import { carveDungeonTopology } from './DungeonTopology';
-import { assignRoomArchetypes } from './RoomArchetypes';
+import { createDoorLayout } from './DoorLayout.js';
+import { carveDungeonTopology } from './DungeonTopology.js';
+import { assignRoomArchetypes } from './RoomArchetypes.js';
 export const BASE_TILE_SIZE = 24;
 export const BASE_MAP_WIDTH = 32;
 export const BASE_MAP_HEIGHT = 20;

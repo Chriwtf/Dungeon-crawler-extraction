@@ -1,5 +1,5 @@
 import type { DungeonData, Point } from '../world/DungeonGenerator';
-import { ROOM_ARCHETYPES } from '../world/RoomArchetypes';
+import { ROOM_ARCHETYPES } from '../world/RoomArchetypes.js';
 
 export type LootKind = 'document' | 'sample' | 'component' | 'artifact';
 
