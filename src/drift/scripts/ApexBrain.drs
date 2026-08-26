@@ -4,12 +4,16 @@ data ApexMind {
     mode: f32 = 0
 }
 
-fn advance(mind: mut ApexMind, pressure: f32, turn: f32, pulse: f32, heard: bool) {
+fn advance(mind: mut ApexMind, pressure: f32, turn: f32, pulse: f32, heard: bool, relicSecured: bool) {
     if mind.mode == 0 && (pressure >= 18 || (pulse >= 4 && turn >= 4)) {
         mind.mode = 1
     }
 
     if heard {
+        mind.mode = 2
+    }
+
+    if relicSecured {
         mind.mode = 2
     }
 }

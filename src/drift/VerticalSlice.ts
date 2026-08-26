@@ -42,6 +42,7 @@ import apexMaterialTextureUrl from '../assets/textures/apex-material-albedo.png?
 import equipmentMaterialTextureUrl from '../assets/textures/equipment-material-albedo.png?url';
 import * as atmosphereScript from './scripts/Atmosphere.drs';
 import * as facilityDirectorScript from './scripts/FacilityDirector.drs';
+import * as relicProtocolScript from './scripts/RelicProtocol.drs';
 
 const STEP_METRES = 2;
 const EXTRACTION_RANGE = 2.1;
@@ -82,6 +83,11 @@ interface AlarmState {
 
 interface FacilityState {
   mode: number;
+}
+
+interface RelicState {
+  secured: number;
+  escapeTurns: number;
 }
 
 /**
@@ -295,7 +301,11 @@ export async function startVerticalSlice(): Promise<void> {
   const updateAtmosphere = atmosphereModule.exports.update as (state: AlarmState, hunting: boolean, pressure: number, dt: number) => void;
   const facilityModule = loadModule(facilityDirectorScript as unknown as Record<string, unknown>);
   const facilityState = (facilityModule.exports.createFacilityState as () => FacilityState)();
-  const updateFacility = facilityModule.exports.advance as (state: FacilityState, turn: number, pressure: number, noise: number) => void;
+  const updateFacility = facilityModule.exports.advance as (state: FacilityState, turn: number, pressure: number, noise: number, relicSecured: boolean) => void;
+  const relicModule = loadModule(relicProtocolScript as unknown as Record<string, unknown>);
+  const relicState = (relicModule.exports.createRelicState as () => RelicState)();
+  const secureRelic = relicModule.exports.secure as (state: RelicState) => void;
+  const advanceRelic = relicModule.exports.advance as (state: RelicState) => void;
   const apex = new ApexDirector(dungeon);
   const enemies = new EnemyDirector(dungeon, RUN_SEED);
   const enemyNodes = new Map<number, SceneNode>();
@@ -406,11 +416,13 @@ export async function startVerticalSlice(): Promise<void> {
 
   const advanceTurn = (action: 'move' | 'turn' | 'blocked' | 'torch' | 'door' | 'attack' | 'heavyAttack' | 'guard' | 'dodge' | 'item', message: string) => {
     const event = simulation.advance(action, message, lootWeight, cargoNoiseReduction);
+    advanceRelic(relicState);
+    const relicSecured = relicState.secured > 0;
     const previousFacilityMode = facilityMode;
-    updateFacility(facilityState, event.turn, event.pressure, event.noiseLevel);
+    updateFacility(facilityState, event.turn, event.pressure, event.noiseLevel, relicSecured);
     facilityMode = Math.round(facilityState.mode);
     const pulse = propagateNoise(dungeon, worldToPoint(dungeon, player.x, player.z), event.noise, event.noiseLevel);
-    const apexEvent = apex.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, event.pressure, event.turn, torchOn);
+    const apexEvent = apex.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, event.pressure, event.turn, torchOn, relicSecured);
     const apexWorld = pointToWorld(dungeon, apexEvent.position);
     apexNode.setPosition(apexWorld.x, 0, apexWorld.z);
     faceNodeToward(apexNode, apexWorld, player);
@@ -428,7 +440,7 @@ export async function startVerticalSlice(): Promise<void> {
       ? 'ECHO: FADING'
       : `ECHO: ${pulse.reachedTiles} TILES // RANGE: ${pulse.radiusTiles * STEP_METRES}M`;
     hud.facility.textContent = `FACILITY: ${facilityLabel(facilityMode)}`;
-    hud.apex.textContent = `STALKER: ${apexEvent.mode.toUpperCase()}`;
+    hud.apex.textContent = relicSecured ? `STALKER: ${apexEvent.mode.toUpperCase()} // RELIC SIGNAL` : `STALKER: ${apexEvent.mode.toUpperCase()}`;
     hud.message.textContent = apexEvent.message ?? (combatEvent.avoided
       ? 'YOU DODGE THE INCOMING STRIKE.'
       : combatEvent.guarded
@@ -576,11 +588,17 @@ export async function startVerticalSlice(): Promise<void> {
 
     player.x = next.x;
     player.z = next.z;
+    const recoveredRelic = !hasRelic && distance(player, relicPosition) < 1.2;
+    if (recoveredRelic) {
+      hasRelic = true;
+      secureRelic(relicState);
+      hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION // SIGNAL ACTIVE';
+    }
     if (hasRelic && distance(player, extractionPosition) <= EXTRACTION_RANGE) {
       completeExtraction();
       return;
     }
-    advanceTurn('move', 'Your footsteps fade into the ventilation hum.');
+    advanceTurn('move', recoveredRelic ? 'RELIC SECURED. THE FACILITY DROPS INTO BLACKOUT.' : 'Your footsteps fade into the ventilation hum.');
     if (completed) return;
 
     const recoveredLoot = lootSpawns.find((loot) =>
@@ -598,12 +616,7 @@ export async function startVerticalSlice(): Promise<void> {
       hud.message.textContent = `SECURED: ${recoveredLoot.name.toUpperCase()} // +${recoveredLoot.value} CR // HEAVIER STEPS`;
     }
 
-    if (!hasRelic && distance(player, relicPosition) < 1.2) {
-      hasRelic = true;
-      hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION';
-      hud.message.textContent = 'RELIC SECURED. The extraction beacon is now active.';
-      updateExploration();
-    }
+    if (recoveredRelic) updateExploration();
   };
 
   addEventListener('keydown', (event) => {

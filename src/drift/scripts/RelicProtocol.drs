@@ -1,0 +1,15 @@
+// Recovering the relic is the run's irreversible phase transition.
+data RelicState {
+    secured: f32 = 0
+    escapeTurns: f32 = 0
+}
+
+fn secure(state: mut RelicState) {
+    state.secured = 1
+}
+
+fn advance(state: mut RelicState) {
+    if state.secured > 0 {
+        state.escapeTurns += 1
+    }
+}

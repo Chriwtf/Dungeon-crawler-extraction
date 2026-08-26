@@ -40,19 +40,19 @@ export class ApexDirector {
         this.mind = module.exports.createApexMind();
         this.advanceMind = module.exports.advance;
     }
-    advance(dungeon, player, pulse, pressure, turn, torchOn) {
+    advance(dungeon, player, pulse, pressure, turn, torchOn, relicSecured = false) {
         const heardPlayer = pulse.intensity > 0 && isNoiseAudibleAt(pulse, this.positionValue);
         const wasDormant = this.modeValue === 'dormant';
-        this.advanceMind(this.mind, pressure, turn, pulse.intensity, heardPlayer);
+        this.advanceMind(this.mind, pressure, turn, pulse.intensity, heardPlayer, relicSecured);
         this.modeValue = modeFromScript(this.mind.mode);
         let message = null;
         if (wasDormant && this.modeValue === 'searching') {
             this.target = player;
             message = 'Something answers the noise from deeper in the facility.';
         }
-        if (this.modeValue === 'hunting' && heardPlayer) {
+        if (this.modeValue === 'hunting' && (heardPlayer || relicSecured)) {
             this.target = player;
-            message = 'The Apex heard that.';
+            message = relicSecured ? 'THE RELIC SIGNAL WAKES THE APEX.' : 'The Apex heard that.';
         }
         if (this.modeValue !== 'dormant' && this.target !== null) {
             const next = findStepToward(dungeon, this.positionValue, this.target);

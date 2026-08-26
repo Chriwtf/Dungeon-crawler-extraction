@@ -5,7 +5,12 @@ data FacilityState {
     nextShift: f32 = 7
 }
 
-fn advance(state: mut FacilityState, turn: f32, pressure: f32, noise: f32) {
+fn advance(state: mut FacilityState, turn: f32, pressure: f32, noise: f32, relicSecured: bool) {
+    if relicSecured {
+        state.mode = 2
+        return
+    }
+
     if turn >= state.nextShift && pressure >= 16 {
         state.mode += 1
         if state.mode > 2 {

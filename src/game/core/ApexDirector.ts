@@ -20,19 +20,19 @@ export class ApexDirector {
   private target: Point | null = null;
   private readonly positionValue: Point;
   private readonly mind: ApexMind;
-  private readonly advanceMind: (mind: ApexMind, pressure: number, turn: number, pulse: number, heard: boolean) => void;
+  private readonly advanceMind: (mind: ApexMind, pressure: number, turn: number, pulse: number, heard: boolean, relicSecured: boolean) => void;
 
   constructor(dungeon: DungeonData) {
     this.positionValue = findFarthestFloor(dungeon, dungeon.playerStart);
     const module = loadModule(apexBrainScript as unknown as Record<string, unknown>);
     this.mind = (module.exports.createApexMind as () => ApexMind)();
-    this.advanceMind = module.exports.advance as (mind: ApexMind, pressure: number, turn: number, pulse: number, heard: boolean) => void;
+    this.advanceMind = module.exports.advance as (mind: ApexMind, pressure: number, turn: number, pulse: number, heard: boolean, relicSecured: boolean) => void;
   }
 
-  advance(dungeon: DungeonData, player: Point, pulse: NoisePulse, pressure: number, turn: number, torchOn: boolean): ApexEvent {
+  advance(dungeon: DungeonData, player: Point, pulse: NoisePulse, pressure: number, turn: number, torchOn: boolean, relicSecured = false): ApexEvent {
     const heardPlayer = pulse.intensity > 0 && isNoiseAudibleAt(pulse, this.positionValue);
     const wasDormant = this.modeValue === 'dormant';
-    this.advanceMind(this.mind, pressure, turn, pulse.intensity, heardPlayer);
+    this.advanceMind(this.mind, pressure, turn, pulse.intensity, heardPlayer, relicSecured);
     this.modeValue = modeFromScript(this.mind.mode);
     let message: string | null = null;
 
@@ -40,9 +40,9 @@ export class ApexDirector {
       this.target = player;
       message = 'Something answers the noise from deeper in the facility.';
     }
-    if (this.modeValue === 'hunting' && heardPlayer) {
+    if (this.modeValue === 'hunting' && (heardPlayer || relicSecured)) {
       this.target = player;
-      message = 'The Apex heard that.';
+      message = relicSecured ? 'THE RELIC SIGNAL WAKES THE APEX.' : 'The Apex heard that.';
     }
     if (this.modeValue !== 'dormant' && this.target !== null) {
       const next = findStepToward(dungeon, this.positionValue, this.target);
