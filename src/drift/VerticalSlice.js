@@ -1,4 +1,5 @@
 import { Camera, MeshBuilder, SceneNode, createPointLightBuffer, createEnvironment, createRenderer, selectPointLights, startLoop, } from '@driftengine/core';
+import { loadModule } from 'driftscript';
 import { ApexDirector } from '../game/core/ApexDirector';
 import { placeRunLoot } from '../game/core/RunLoot';
 import { propagateNoise } from '../game/core/NoiseSystem';
@@ -16,6 +17,7 @@ import documentLootTextureUrl from '../assets/textures/loot-document-albedo.png?
 import sampleLootTextureUrl from '../assets/textures/loot-sample-albedo.png?url';
 import componentLootTextureUrl from '../assets/textures/loot-component-albedo.png?url';
 import artifactLootTextureUrl from '../assets/textures/loot-artifact-albedo.png?url';
+import * as atmosphereScript from './scripts/Atmosphere.drs';
 const STEP_METRES = 2;
 const EXTRACTION_RANGE = 2.1;
 const PLAYER_HEIGHT = 1.65;
@@ -171,6 +173,9 @@ export async function startVerticalSlice() {
     const player = { x: startPosition.x, z: startPosition.z };
     let facing = 1;
     const simulation = new RunSimulation(RUN_SEED);
+    const atmosphereModule = loadModule(atmosphereScript);
+    const atmosphereState = atmosphereModule.exports.createAlarmState();
+    const updateAtmosphere = atmosphereModule.exports.update;
     const apex = new ApexDirector(dungeon);
     let apexVisible = false;
     let apexMode = 'dormant';
@@ -338,6 +343,7 @@ export async function startVerticalSlice() {
             previousRelicSpin = relicSpin;
             relicSpin += dt * 1.4;
             visualTime += dt;
+            updateAtmosphere(atmosphereState, apexMode === 'hunting', simulation.pressure, dt);
         },
         render(alpha) {
             const interpolatedSpin = previousRelicSpin + (relicSpin - previousRelicSpin) * alpha;
@@ -380,17 +386,17 @@ export async function startVerticalSlice() {
                     sourceRadius: 0.06,
                 });
             }
-            const alertPulse = apexMode === 'hunting' ? 0.7 + Math.sin(visualTime * 8) * 0.3 : 0.36;
+            const alertPulse = 0.36 + atmosphereState.level * (0.34 + Math.sin(visualTime * 8) * 0.3);
             for (const position of emergencyPositions) {
                 lights.push({
                     x: position.x,
                     y: 2.65,
                     z: position.z,
-                    r: apexMode === 'hunting' ? alertPulse : 0.42,
-                    g: apexMode === 'hunting' ? 0.025 : 0.06,
-                    b: apexMode === 'hunting' ? 0.015 : 0.045,
-                    radius: apexMode === 'hunting' ? 4.4 : 3.1,
-                    flicker: apexMode === 'hunting' ? 0.65 : 0.22,
+                    r: 0.42 + atmosphereState.level * alertPulse,
+                    g: 0.06 - atmosphereState.level * 0.04,
+                    b: 0.045 - atmosphereState.level * 0.03,
+                    radius: 3.1 + atmosphereState.level * 1.3,
+                    flicker: 0.22 + atmosphereState.level * 0.43,
                     shadowNear: 0.1,
                     sourceRadius: 0.04,
                 });
@@ -415,9 +421,7 @@ export async function startVerticalSlice() {
             environment.lightSourceRadii = lightBuffer.sourceRadii;
             environment.lightWeights = lightBuffer.weights;
             environment.activeLightWorldIndices = lightBuffer.sourceIndex;
-            environment.fogDensity = apexMode === 'hunting'
-                ? 0.024
-                : 0.014 + Math.min(0.007, simulation.pressure * 0.00007);
+            environment.fogDensity = 0.014 + Math.min(0.007, simulation.pressure * 0.00007) + atmosphereState.level * 0.003;
             renderer.beginFrame([0.004, 0.009, 0.007]);
             renderer.bindMeshPass(camera, environment);
             renderer.setSurfaceTexture(floorTexture, 1.4, 1.4);

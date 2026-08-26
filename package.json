@@ -10,9 +10,14 @@
     "assets:environment": "node scripts/build-textured-environment.mjs"
   },
   "dependencies": {
+    "@driftengine/animation": "file:../driftengine/packages/animation",
     "@driftengine/assets": "file:../driftengine/packages/assets",
+    "@driftengine/audio": "file:../driftengine/packages/audio",
     "@driftengine/core": "file:../driftengine/packages/core",
     "@driftengine/drft": "file:../driftengine/packages/drft",
+    "@driftengine/entities": "file:../driftengine/packages/entities",
+    "@driftengine/script": "file:../driftengine/packages/script",
+    "driftscript": "file:../driftengine/packages/driftscript",
     "gl-matrix": "^3.4.3",
     "phaser": "^3.90.0"
   },

@@ -1,0 +1,20 @@
+// Presentation state is deliberately script-owned: it can be tuned and hot-reloaded without
+// changing deterministic dungeon state or the renderer integration.
+data AlarmState {
+    level: f32 = 0
+}
+
+fn update(state: mut AlarmState, hunting: bool, pressure: f32, dt: f32) {
+    if hunting {
+        state.level += dt * (1.8 + pressure * 0.02)
+    } else {
+        state.level -= dt * 0.8
+    }
+
+    if state.level < 0 {
+        state.level = 0
+    }
+    if state.level > 1 {
+        state.level = 1
+    }
+}
