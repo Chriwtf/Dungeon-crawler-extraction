@@ -1,9 +1,9 @@
 import { ROOM_ARCHETYPES } from '../world/RoomArchetypes';
 const LOOT_TABLE = [
-    { kind: 'document', name: 'Classified dossier', value: 180, weight: 1 },
-    { kind: 'sample', name: 'Biological sample', value: 310, weight: 2 },
-    { kind: 'component', name: 'Calibrated component', value: 460, weight: 3 },
-    { kind: 'artifact', name: 'Unidentified fragment', value: 720, weight: 4 },
+    { kind: 'document', name: 'Classified dossier', value: 160, weight: 1 },
+    { kind: 'sample', name: 'Biological sample', value: 300, weight: 2 },
+    { kind: 'component', name: 'Calibrated component', value: 520, weight: 3 },
+    { kind: 'artifact', name: 'Unidentified fragment', value: 900, weight: 4 },
 ];
 const LOOT_PROFILES = {
     archive: ['document', 'artifact'],
@@ -13,7 +13,7 @@ const LOOT_PROFILES = {
     occult: ['artifact', 'sample'],
     supplies: ['sample', 'component'],
 };
-export function placeRunLoot(dungeon, seed, count = 4) {
+export function placeRunLoot(dungeon, seed, count = 5) {
     const candidates = [];
     for (let y = 0; y < dungeon.tiles.length; y += 1) {
         for (let x = 0; x < dungeon.tiles[y].length; x += 1) {

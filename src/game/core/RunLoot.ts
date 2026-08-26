@@ -13,10 +13,10 @@ export type LootSpawn = {
 };
 
 const LOOT_TABLE = [
-  { kind: 'document' as const, name: 'Classified dossier', value: 180, weight: 1 },
-  { kind: 'sample' as const, name: 'Biological sample', value: 310, weight: 2 },
-  { kind: 'component' as const, name: 'Calibrated component', value: 460, weight: 3 },
-  { kind: 'artifact' as const, name: 'Unidentified fragment', value: 720, weight: 4 },
+  { kind: 'document' as const, name: 'Classified dossier', value: 160, weight: 1 },
+  { kind: 'sample' as const, name: 'Biological sample', value: 300, weight: 2 },
+  { kind: 'component' as const, name: 'Calibrated component', value: 520, weight: 3 },
+  { kind: 'artifact' as const, name: 'Unidentified fragment', value: 900, weight: 4 },
 ] as const;
 
 const LOOT_PROFILES: Readonly<Record<string, readonly LootKind[]>> = {
@@ -28,7 +28,7 @@ const LOOT_PROFILES: Readonly<Record<string, readonly LootKind[]>> = {
   supplies: ['sample', 'component'],
 };
 
-export function placeRunLoot(dungeon: DungeonData, seed: number, count = 4): LootSpawn[] {
+export function placeRunLoot(dungeon: DungeonData, seed: number, count = 5): LootSpawn[] {
   const candidates: Array<{ point: Point; roomId?: string; lootProfile?: string; weight: number }> = [];
   for (let y = 0; y < dungeon.tiles.length; y += 1) {
     for (let x = 0; x < dungeon.tiles[y].length; x += 1) {

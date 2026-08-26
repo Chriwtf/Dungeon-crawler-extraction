@@ -159,7 +159,7 @@ export async function startVerticalSlice() {
     const relicPosition = pointToWorld(dungeon, dungeon.objective);
     const extractionPosition = pointToWorld(dungeon, dungeon.extraction);
     const startPosition = pointToWorld(dungeon, dungeon.playerStart);
-    const lootSpawns = placeRunLoot(dungeon, RUN_SEED);
+    const lootSpawns = placeRunLoot(dungeon, RUN_SEED, 5);
     const containers = placeRunContainers(dungeon);
     const emergencyPositions = selectEmergencyPositions(dungeon, 7).map((point) => pointToWorld(dungeon, point));
     const relicPedestal = renderer.createMesh(buildRelicPedestal().build());
@@ -566,14 +566,14 @@ export async function startVerticalSlice() {
         const recoveredLoot = lootSpawns.find((loot) => !collectedLoot.has(loot.id) && distance(player, pointToWorld(dungeon, loot.point)) < 1.2);
         if (recoveredLoot !== undefined) {
             if (lootWeight + recoveredLoot.weight > carryCapacity) {
-                hud.message.textContent = `LOAD LIMIT ${carryCapacity} KG. DROP CARGO OR LEAVE ${recoveredLoot.name.toUpperCase()}.`;
+                hud.message.textContent = `LOAD LIMIT ${carryCapacity} KG. LEAVE ${recoveredLoot.name.toUpperCase()} OR RETURN LIGHTER.`;
                 return;
             }
             collectedLoot.add(recoveredLoot.id);
             lootValue += recoveredLoot.value;
             lootWeight += recoveredLoot.weight;
             audio.play('loot');
-            hud.loot.textContent = `CARRIED: ${lootValue} CR | ${lootWeight} KG`;
+            hud.loot.textContent = `CARRIED: ${lootValue} CR | ${lootWeight} / ${carryCapacity} KG`;
             hud.message.textContent = `SECURED: ${recoveredLoot.name.toUpperCase()} // +${recoveredLoot.value} CR // HEAVIER STEPS`;
         }
         if (recoveredRelic)

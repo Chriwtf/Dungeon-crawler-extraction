@@ -57,11 +57,14 @@ export class RunSimulation {
   }
 
   advance(action: RunAction, message: string, carriedWeight = 0, cargoNoiseReduction = 0): RunEvent {
-    const cargoNoise = action === 'move' ? Math.max(0, Math.floor(carriedWeight / 2) - cargoNoiseReduction) : 0;
+    // Cargo should make a long detour tense, not make a single light item punitive.
+    const cargoNoise = action === 'move' ? Math.max(0, Math.ceil(carriedWeight / 3) - cargoNoiseReduction) : 0;
     const noise = ACTION_NOISE[action] + cargoNoise;
     const turn = this.turns.next(message).turn;
     this.noiseLevelValue = Math.min(20, Math.max(0, this.noiseLevelValue - 1) + noise);
-    this.pressureValue = Math.min(100, this.pressureValue + 1 + noise * 2 + Math.floor(this.noiseLevelValue / 5) + Math.floor(turn / 8));
+    // Quiet exploration has time to breathe; noise and protracted runs create the real debt.
+    const pressureGain = 0.6 + noise * 0.8 + Math.max(0, this.noiseLevelValue - 3) * 0.25 + Math.floor(turn / 10) * 0.35;
+    this.pressureValue = Math.min(100, this.pressureValue + pressureGain);
     const hint = this.pressureValue >= 18 && this.roll() < Math.min(0.65, this.pressureValue / 120)
       ? ` ${PRESSURE_HINTS[Math.floor(this.roll() * PRESSURE_HINTS.length)]}`
       : '';

@@ -41,8 +41,8 @@ const Stats = defineComponent('EnemyStats', {
 const State = defineComponent('EnemyState', { value: 'u8', targetX: 'i32', targetY: 'i32' });
 
 const DEFINITIONS: Readonly<Record<EnemyKind, Omit<EnemySnapshot, 'id' | 'state' | 'position'>>> = {
-  crawler: { kind: 'crawler', hp: 24, maxHp: 24, damage: 7, speed: 2, perceptionRange: 4, hearingRange: 8, lootTable: 'crawler remains' },
-  guard: { kind: 'guard', hp: 52, maxHp: 52, damage: 12, speed: 1, perceptionRange: 5, hearingRange: 4, lootTable: 'guard equipment' },
+  crawler: { kind: 'crawler', hp: 22, maxHp: 22, damage: 6, speed: 2, perceptionRange: 4, hearingRange: 8, lootTable: 'crawler remains' },
+  guard: { kind: 'guard', hp: 46, maxHp: 46, damage: 10, speed: 1, perceptionRange: 5, hearingRange: 4, lootTable: 'guard equipment' },
 };
 
 /** DriftEngine ECS world for local enemies; pathfinding remains deterministic game-side. */
@@ -56,12 +56,15 @@ export class EnemyDirector {
   constructor(dungeon: DungeonData, seed: number) {
     const random = createSeededRandom(seed ^ 0x9e3779b9);
     const spawned = new Set<EnemyKind>();
+    let spawnedCount = 0;
     for (const room of dungeon.rooms) {
+      if (spawnedCount >= 4) break;
       const profile = ROOM_ARCHETYPES[room.archetype].enemyProfile;
       const kind = profile === 'crawler' ? 'crawler' : profile === 'guard' ? 'guard' : undefined;
       if (kind === undefined || samePoint(room.center, dungeon.playerStart) || random() > ROOM_ARCHETYPES[room.archetype].enemyChance) continue;
       this.spawn(kind, room.center);
       spawned.add(kind);
+      spawnedCount += 1;
     }
 
     // The current vertical slice is small; guarantee both authored enemy types are testable.
@@ -73,7 +76,10 @@ export class EnemyDirector {
       const kind = requiredKinds[index];
       if (spawned.has(kind)) continue;
       const room = fallbackRooms[index % fallbackRooms.length];
-      if (room !== undefined) this.spawn(kind, room.center);
+      if (room !== undefined && spawnedCount < 4) {
+        this.spawn(kind, room.center);
+        spawnedCount += 1;
+      }
     }
   }
 

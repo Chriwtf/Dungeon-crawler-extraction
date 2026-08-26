@@ -1,7 +1,7 @@
 export const UPGRADE_DEFINITIONS = {
-    torch: { label: 'TORCH ARRAY', description: '+2m torch sight per level', costs: [400, 800] },
-    dampeners: { label: 'DAMPENERS', description: '-1 cargo noise per step per level', costs: [350, 700] },
-    rig: { label: 'UTILITY RIG', description: '+4kg carrying capacity per level', costs: [450, 900] },
+    torch: { label: 'TORCH ARRAY', description: '+2m torch sight per level', costs: [350, 750] },
+    dampeners: { label: 'DAMPENERS', description: '-1 cargo noise per step per level', costs: [300, 650] },
+    rig: { label: 'UTILITY RIG', description: '+4kg carrying capacity per level', costs: [400, 850] },
 };
 const STORAGE_KEY = 'dungeon-extraction-progression-v1';
 const LEGACY_CREDITS_KEY = 'dungeon-extraction-stash-credits';

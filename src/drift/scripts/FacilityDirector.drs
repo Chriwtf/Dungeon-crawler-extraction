@@ -11,7 +11,7 @@ fn advance(state: mut FacilityState, turn: f32, pressure: f32, noise: f32, relic
         return
     }
 
-    if turn >= state.nextShift && pressure >= 16 {
+    if turn >= state.nextShift && pressure >= 22 {
         state.mode += 1
         if state.mode > 2 {
             state.mode = 0
