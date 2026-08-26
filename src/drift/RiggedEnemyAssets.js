@@ -16,6 +16,10 @@ export async function loadRiggedEnemyAssets(renderer) {
 }
 export function animateRig(asset, time) {
     sampleClip(asset.clip, time % asset.duration, asset.pose);
+    if (asset.rootMotionJoint >= 0) {
+        // Gameplay owns world movement; discard the clip's locomotion before skinning.
+        asset.pose.translation.fill(0, asset.rootMotionJoint * 3, asset.rootMotionJoint * 3 + 3);
+    }
     asset.skeleton.applyPose(asset.pose);
 }
 /**
@@ -45,7 +49,8 @@ async function loadRigged(renderer, url) {
             return null;
         const imported = gltfToMeshes(json, [binary]);
         const duration = Math.max(0.01, clip.durationSec);
-        return { meshes: imported.meshes.map((mesh) => renderer.createMesh(mesh)), skeleton: new Skeleton(skin.joints, skin.inverseBind), pose: createPose(skin.joints.length), clip, duration };
+        const rootMotionJoint = skin.joints.findIndex((joint) => joint.name.toLowerCase() === 'hips');
+        return { meshes: imported.meshes.map((mesh) => renderer.createMesh(mesh)), skeleton: new Skeleton(skin.joints, skin.inverseBind), pose: createPose(skin.joints.length), clip, duration, rootMotionJoint };
     }
     catch {
         return null;

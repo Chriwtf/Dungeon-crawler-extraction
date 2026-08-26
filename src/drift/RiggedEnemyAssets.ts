@@ -6,7 +6,7 @@ import guardUrl from '../assets/models/characters/guard-rigged.glb?url';
 import crawlerUrl from '../assets/models/characters/crawler-rigged.glb?url';
 import apexUrl from '../assets/models/characters/apex-rigged.glb?url';
 
-export type RiggedAsset = { readonly meshes: ReturnType<RendererApi['createMesh']>[]; readonly skeleton: Skeleton; readonly pose: ReturnType<typeof createPose>; readonly clip: ReturnType<typeof readGltfSkins>['clips'][number]; readonly duration: number };
+export type RiggedAsset = { readonly meshes: ReturnType<RendererApi['createMesh']>[]; readonly skeleton: Skeleton; readonly pose: ReturnType<typeof createPose>; readonly clip: ReturnType<typeof readGltfSkins>['clips'][number]; readonly duration: number; readonly rootMotionJoint: number };
 
 const RIGGED_MODEL_TRANSFORMS: Record<EnemyKind | 'apex', { readonly scale: number; readonly floorOffset: number }> = {
   guard: { scale: 3, floorOffset: 0.96 },
@@ -22,6 +22,10 @@ export async function loadRiggedEnemyAssets(renderer: RendererApi): Promise<Reco
 
 export function animateRig(asset: RiggedAsset, time: number): void {
   sampleClip(asset.clip, time % asset.duration, asset.pose);
+  if (asset.rootMotionJoint >= 0) {
+    // Gameplay owns world movement; discard the clip's locomotion before skinning.
+    asset.pose.translation.fill(0, asset.rootMotionJoint * 3, asset.rootMotionJoint * 3 + 3);
+  }
   asset.skeleton.applyPose(asset.pose);
 }
 
@@ -50,7 +54,8 @@ async function loadRigged(renderer: RendererApi, url: string): Promise<RiggedAss
     if (skin === undefined || clip === undefined) return null;
     const imported = gltfToMeshes(json, [binary]);
     const duration = Math.max(0.01, clip.durationSec);
-    return { meshes: imported.meshes.map((mesh) => renderer.createMesh(mesh)), skeleton: new Skeleton(skin.joints, skin.inverseBind), pose: createPose(skin.joints.length), clip, duration };
+    const rootMotionJoint = skin.joints.findIndex((joint) => joint.name.toLowerCase() === 'hips');
+    return { meshes: imported.meshes.map((mesh) => renderer.createMesh(mesh)), skeleton: new Skeleton(skin.joints, skin.inverseBind), pose: createPose(skin.joints.length), clip, duration, rootMotionJoint };
   } catch {
     return null;
   }
