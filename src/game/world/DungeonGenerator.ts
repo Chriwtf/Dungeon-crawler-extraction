@@ -20,19 +20,24 @@ export type DungeonConfig = {
 
 export type DungeonData = {
   tiles: TileGrid;
+  rooms: readonly RoomData[];
   playerStart: Point;
   objective: Point;
   extraction: Point;
   config: DungeonConfig;
 };
 
-type Room = {
+export type RoomData = {
+  readonly id: string;
   x: number;
   y: number;
   w: number;
   h: number;
   center: Point;
+  archetype: RoomArchetypeId;
 };
+
+type Room = Omit<RoomData, 'id' | 'archetype'>;
 
 const MIN_REQUIRED_ROOMS = 3;
 const MAX_GENERATION_ATTEMPTS = 8;
@@ -189,15 +194,28 @@ export const generateDungeon = (config: DungeonConfig, seed?: number): DungeonDa
   const playerStart = rooms[0].center;
   const objective = rooms[rooms.length - 2].center;
   const extraction = rooms[rooms.length - 1].center;
+  const archetypes = assignRoomArchetypes(rooms.map((room, index) => ({
+    index,
+    width: room.w,
+    height: room.h,
+    forcedId: index === rooms.length - 2 ? 'reliquary' : index === rooms.length - 1 ? 'extractionRoom' : undefined,
+  })), random);
+  const roomData: readonly RoomData[] = rooms.map((room, index) => ({
+    ...room,
+    id: `room-${index}`,
+    archetype: archetypes[index],
+  }));
 
   tiles[objective.y][objective.x] = 'objective';
   tiles[extraction.y][extraction.x] = 'extraction';
 
   return {
     tiles,
+    rooms: roomData,
     playerStart,
     objective,
     extraction,
     config,
   };
 };
+import { assignRoomArchetypes, type RoomArchetypeId } from './RoomArchetypes';

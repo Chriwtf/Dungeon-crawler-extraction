@@ -119,13 +119,26 @@ export const generateDungeon = (config, seed) => {
     const playerStart = rooms[0].center;
     const objective = rooms[rooms.length - 2].center;
     const extraction = rooms[rooms.length - 1].center;
+    const archetypes = assignRoomArchetypes(rooms.map((room, index) => ({
+        index,
+        width: room.w,
+        height: room.h,
+        forcedId: index === rooms.length - 2 ? 'reliquary' : index === rooms.length - 1 ? 'extractionRoom' : undefined,
+    })), random);
+    const roomData = rooms.map((room, index) => ({
+        ...room,
+        id: `room-${index}`,
+        archetype: archetypes[index],
+    }));
     tiles[objective.y][objective.x] = 'objective';
     tiles[extraction.y][extraction.x] = 'extraction';
     return {
         tiles,
+        rooms: roomData,
         playerStart,
         objective,
         extraction,
         config,
     };
 };
+import { assignRoomArchetypes } from './RoomArchetypes';

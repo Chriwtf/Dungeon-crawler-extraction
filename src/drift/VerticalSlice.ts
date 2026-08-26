@@ -19,6 +19,7 @@ import { generateDungeon } from '../game/world/DungeonGenerator';
 import { buildDungeonMeshes, pointToWorld, worldToPoint } from './ProceduralDungeon3d';
 import { buildObjectiveTextureMeshes } from './ObjectiveTextureMeshes';
 import { buildLootPropMeshes } from './LootProps3d';
+import { buildRoomPropMeshes } from './RoomProps3d';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
 import relicTextureUrl from '../assets/textures/relic-pedestal-albedo.png?url';
@@ -183,6 +184,7 @@ export async function startVerticalSlice(): Promise<void> {
   const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
   const texturedExtractionHatch = renderer.createMesh(objectiveTextures.extractionHatch);
   const lootProps = buildLootPropMeshes();
+  const roomProps = buildRoomPropMeshes();
   const lootMeshes = {
     document: renderer.createMesh(lootProps.document),
     sample: renderer.createMesh(lootProps.sample),
@@ -195,6 +197,7 @@ export async function startVerticalSlice(): Promise<void> {
     component: componentLootTexture,
     artifact: artifactLootTexture,
   };
+  const roomMeshes = Object.fromEntries(Object.entries(roomProps).map(([id, mesh]) => [id, renderer.createMesh(mesh)])) as Record<keyof typeof roomProps, ReturnType<typeof renderer.createMesh>>;
   const identity = new SceneNode();
   identity.updateWorld();
 
@@ -206,6 +209,12 @@ export async function startVerticalSlice(): Promise<void> {
   extractionNode.setPosition(extractionPosition.x, 0.05, extractionPosition.z);
   const lootNodes = lootSpawns.map((loot) => {
     const position = pointToWorld(dungeon, loot.point);
+    const node = new SceneNode();
+    node.setPosition(position.x, 0, position.z);
+    return node;
+  });
+  const roomPropNodes = dungeon.rooms.map((room) => {
+    const position = pointToWorld(dungeon, room.center);
     const node = new SceneNode();
     node.setPosition(position.x, 0, position.z);
     return node;
@@ -417,6 +426,7 @@ export async function startVerticalSlice(): Promise<void> {
       relicNode.updateWorld();
       extractionNode.updateWorld();
       for (const node of lootNodes) node.updateWorld();
+      for (const node of roomPropNodes) node.updateWorld();
       apexNode.updateWorld();
       for (const node of emergencyNodes) node.updateWorld();
       updateCamera();
@@ -495,6 +505,10 @@ export async function startVerticalSlice(): Promise<void> {
       renderer.setSurfaceTexture(wallTexture, 1, 1.8);
       renderer.drawMesh(walls, identity.worldMatrix);
       renderer.setSurfaceTexture(null);
+      for (let index = 0; index < dungeon.rooms.length; index += 1) {
+        const room = dungeon.rooms[index];
+        renderer.drawMesh(roomMeshes[room.archetype], roomPropNodes[index].worldMatrix);
+      }
       for (const node of emergencyNodes) renderer.drawMesh(emergencyLamp, node.worldMatrix);
       if (!hasRelic) {
         renderer.drawMesh(relicPedestal, relicPedestalNode.worldMatrix);
