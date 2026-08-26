@@ -36,6 +36,10 @@ import documentLootTextureUrl from '../assets/textures/loot-document-albedo.png?
 import sampleLootTextureUrl from '../assets/textures/loot-sample-albedo.png?url';
 import componentLootTextureUrl from '../assets/textures/loot-component-albedo.png?url';
 import artifactLootTextureUrl from '../assets/textures/loot-artifact-albedo.png?url';
+import guardMaterialTextureUrl from '../assets/textures/guard-material-albedo.png?url';
+import crawlerMaterialTextureUrl from '../assets/textures/crawler-material-albedo.png?url';
+import apexMaterialTextureUrl from '../assets/textures/apex-material-albedo.png?url';
+import equipmentMaterialTextureUrl from '../assets/textures/equipment-material-albedo.png?url';
 import * as atmosphereScript from './scripts/Atmosphere.drs';
 import * as facilityDirectorScript from './scripts/FacilityDirector.drs';
 
@@ -178,7 +182,7 @@ export async function startVerticalSlice(): Promise<void> {
   const dungeonMeshes = buildDungeonMeshes(dungeon);
   const floor = renderer.createMesh(dungeonMeshes.floor);
   const walls = renderer.createMesh(dungeonMeshes.walls);
-  const [floorTexture, wallTexture, relicTexture, extractionTexture, documentLootTexture, sampleLootTexture, componentLootTexture, artifactLootTexture] = await Promise.all([
+  const [floorTexture, wallTexture, relicTexture, extractionTexture, documentLootTexture, sampleLootTexture, componentLootTexture, artifactLootTexture, guardMaterialTexture, crawlerMaterialTexture, apexMaterialTexture, equipmentMaterialTexture] = await Promise.all([
     loadSurfaceTexture(renderer, floorTextureUrl),
     loadSurfaceTexture(renderer, wallTextureUrl),
     loadSurfaceTexture(renderer, relicTextureUrl, 'clamp'),
@@ -187,6 +191,10 @@ export async function startVerticalSlice(): Promise<void> {
     loadSurfaceTexture(renderer, sampleLootTextureUrl, 'clamp'),
     loadSurfaceTexture(renderer, componentLootTextureUrl, 'clamp'),
     loadSurfaceTexture(renderer, artifactLootTextureUrl, 'clamp'),
+    loadSurfaceTexture(renderer, guardMaterialTextureUrl),
+    loadSurfaceTexture(renderer, crawlerMaterialTextureUrl),
+    loadSurfaceTexture(renderer, apexMaterialTextureUrl),
+    loadSurfaceTexture(renderer, equipmentMaterialTextureUrl),
   ]);
   const relicPosition = pointToWorld(dungeon, dungeon.objective);
   const extractionPosition = pointToWorld(dungeon, dungeon.extraction);
@@ -737,12 +745,12 @@ export async function startVerticalSlice(): Promise<void> {
           renderer.drawMesh(lootMeshes[loot.kind], lootNodes[index].worldMatrix);
         }
       }
-      renderer.setSurfaceTexture(null);
+      renderer.setSurfaceTexture(equipmentMaterialTexture, 1, 1);
       for (let index = 0; index < containers.length; index += 1) {
         const container = containers[index];
         if (!openedContainers.has(container.id) && exploration.isVisible(container.point)) renderer.drawMesh(containerMeshes[container.kind], containerNodes[index].worldMatrix);
       }
-      renderer.setSurfaceTexture(null);
+      renderer.setSurfaceTexture(apexMaterialTexture, 1, 1);
       if (apexVisible && exploration.isVisible(apexPosition)) {
         renderer.drawMesh(apexMesh, apexNode.worldMatrix);
         renderer.setSurfaceTexture(null);
@@ -752,6 +760,7 @@ export async function startVerticalSlice(): Promise<void> {
         if (!exploration.isVisible(enemy.position)) continue;
         const node = enemyNodes.get(enemy.id);
         if (node !== undefined) {
+          renderer.setSurfaceTexture(enemy.kind === 'crawler' ? crawlerMaterialTexture : guardMaterialTexture, 1, 1);
           renderer.drawMesh(enemyMeshes[enemy.kind], node.worldMatrix);
         }
       }

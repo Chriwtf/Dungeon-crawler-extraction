@@ -17,12 +17,12 @@ const CRAWLER: Record<string, UvRect> = {
 /** Hand-authored low-poly humanoids, with each body part mapped to its atlas region. */
 export function buildEnemyMeshes(): Record<EnemyKind, MeshData> {
   const guard = new CharacterMeshBuilder();
-  addHumanoid(guard, GUARD, { torso: [0.15, 0.19, 0.2], head: [0.09, 0.12, 0.13], arm: [0.19, 0.24, 0.2], leg: [0.16, 0.2, 0.17] }, { height: 1.72, shoulder: 0.35, torso: 0.27, limb: 0.095, stance: 0.17 });
-  guard.addBox([0, 1.58, 0.17], [0.18, 0.07, 0.035], [0.42, 0.5, 0.44], GUARD.torso);
+  addHumanoid(guard, GUARD, { torso: [0.94, 0.94, 0.94], head: [0.86, 0.9, 0.9], arm: [0.9, 0.94, 0.88], leg: [0.88, 0.92, 0.86] }, { height: 1.72, shoulder: 0.35, torso: 0.27, limb: 0.095, stance: 0.17 });
+  guard.addBox([0, 1.58, 0.17], [0.18, 0.07, 0.035], [0.9, 0.9, 0.9], GUARD.torso);
 
   const crawler = new CharacterMeshBuilder();
-  addHumanoid(crawler, CRAWLER, { torso: [0.28, 0.42, 0.32], head: [0.36, 0.5, 0.38], arm: [0.33, 0.46, 0.34], leg: [0.19, 0.25, 0.18] }, { height: 1.28, shoulder: 0.31, torso: 0.25, limb: 0.1, stance: 0.21, crouch: 0.22 });
-  crawler.addBox([0, 1.03, 0.19], [0.23, 0.12, 0.08], [0.16, 0.2, 0.14], CRAWLER.torso);
+  addHumanoid(crawler, CRAWLER, { torso: [0.82, 0.94, 0.82], head: [0.86, 0.98, 0.86], arm: [0.84, 0.95, 0.84], leg: [0.58, 0.68, 0.58] }, { height: 1.28, shoulder: 0.31, torso: 0.25, limb: 0.1, stance: 0.21, crouch: 0.22 });
+  crawler.addBox([0, 1.03, 0.19], [0.23, 0.12, 0.08], [0.62, 0.68, 0.58], CRAWLER.torso);
   return { guard: guard.build(), crawler: crawler.build() };
 }
 
@@ -30,10 +30,10 @@ export function buildEnemyMeshes(): Record<EnemyKind, MeshData> {
 export function buildApexMesh(): MeshData {
   const apex = new CharacterMeshBuilder();
   const material: UvRect = [0.06, 0.08, 0.94, 0.92];
-  addHumanoid(apex, { torso: material, head: material, arm: material, leg: material }, { torso: [0.035, 0.055, 0.065], head: [0.02, 0.035, 0.04], arm: [0.05, 0.07, 0.08], leg: [0.04, 0.06, 0.07] }, { height: 2.02, shoulder: 0.28, torso: 0.2, limb: 0.07, stance: 0.13 });
-  apex.addBox([0, 1.83, 0.15], [0.14, 0.1, 0.06], [0.11, 0.16, 0.18], material);
-  apex.addBox([-0.33, 1.08, 0.03], [0.035, 0.52, 0.035], [0.08, 0.12, 0.14], material);
-  apex.addBox([0.33, 1.08, 0.03], [0.035, 0.52, 0.035], [0.08, 0.12, 0.14], material);
+  addHumanoid(apex, { torso: material, head: material, arm: material, leg: material }, { torso: [0.82, 0.9, 1], head: [0.75, 0.84, 0.94], arm: [0.78, 0.88, 0.98], leg: [0.74, 0.84, 0.94] }, { height: 2.02, shoulder: 0.28, torso: 0.2, limb: 0.07, stance: 0.13 });
+  apex.addBox([0, 1.83, 0.15], [0.14, 0.1, 0.06], [0.82, 0.9, 1], material);
+  apex.addBox([-0.33, 1.08, 0.03], [0.035, 0.52, 0.035], [0.78, 0.88, 0.98], material);
+  apex.addBox([0.33, 1.08, 0.03], [0.035, 0.52, 0.035], [0.78, 0.88, 0.98], material);
   return apex.build();
 }
 
