@@ -1,4 +1,4 @@
-export function createDoorLayout(rooms, connections, random) {
+export function createDoorLayout(tiles, rooms, connections, random) {
     const doors = [];
     const roomsWithDoors = new Set();
     for (const connection of connections) {
@@ -7,6 +7,8 @@ export function createDoorLayout(rooms, connections, random) {
         if (previous === undefined || room === undefined || connection.kind === 'shortcut' || roomsWithDoors.has(room.id))
             continue;
         const doorway = connection.doorway;
+        if (!hasDoorFrame(tiles, doorway.point, doorway.wallOffset))
+            continue;
         doors.push({
             id: `door-${connection.id}`,
             point: doorway.point,
@@ -21,4 +23,11 @@ export function createDoorLayout(rooms, connections, random) {
         roomsWithDoors.add(room.id);
     }
     return doors;
+}
+function hasDoorFrame(tiles, point, offset) {
+    const outside = { x: point.x + offset.x, y: point.y + offset.y };
+    const lateral = offset.x !== 0
+        ? [{ x: outside.x, y: outside.y - 1 }, { x: outside.x, y: outside.y + 1 }]
+        : [{ x: outside.x - 1, y: outside.y }, { x: outside.x + 1, y: outside.y }];
+    return lateral.every((candidate) => tiles[candidate.y]?.[candidate.x] === 'wall');
 }
