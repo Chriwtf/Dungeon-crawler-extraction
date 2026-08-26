@@ -1,3 +1,4 @@
+import type { DungeonConnection } from './DungeonTopology';
 import type { Point, RoomData, TileGrid } from './DungeonGenerator';
 
 export type DoorState = 'open' | 'closed' | 'locked' | 'sealed' | 'secret';
@@ -14,16 +15,17 @@ export type DungeonDoor = {
   readonly wallOffset: Readonly<{ x: number; y: number }>;
 };
 
-export function createDoorLayout(tiles: TileGrid, rooms: readonly RoomData[], random: () => number): readonly DungeonDoor[] {
+export function createDoorLayout(tiles: TileGrid, rooms: readonly RoomData[], connections: readonly DungeonConnection[], random: () => number): readonly DungeonDoor[] {
   const doors: DungeonDoor[] = [];
-  for (let index = 1; index < rooms.length; index += 1) {
-    const previous = rooms[index - 1];
-    const room = rooms[index];
+  for (const connection of connections) {
+    const previous = rooms.find((room) => room.id === connection.fromRoomId);
+    const room = rooms.find((candidate) => candidate.id === connection.toRoomId);
+    if (previous === undefined || room === undefined) continue;
     const doorway = findDoorway(tiles, room, previous.center);
     if (doorway === undefined) continue;
 
     doors.push({
-      id: `door-${index - 1}-${index}`,
+      id: `door-${connection.id}`,
       point: doorway.point,
       // Keys arrive in Step 16. Until then, only open and closed doors can gate the critical path.
       state: random() < 0.26 ? 'open' : 'closed',

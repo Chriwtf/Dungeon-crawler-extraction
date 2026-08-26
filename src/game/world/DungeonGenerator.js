@@ -1,8 +1,10 @@
 import { createDoorLayout } from './DoorLayout';
+import { carveDungeonTopology } from './DungeonTopology';
+import { assignRoomArchetypes } from './RoomArchetypes';
 export const BASE_TILE_SIZE = 24;
 export const BASE_MAP_WIDTH = 32;
 export const BASE_MAP_HEIGHT = 20;
-const MIN_REQUIRED_ROOMS = 3;
+const MIN_REQUIRED_ROOMS = 6;
 const MAX_GENERATION_ATTEMPTS = 8;
 const randomBetween = (random, min, max) => Math.floor(random() * (max - min + 1)) + min;
 const createSeededRandom = (seed) => {
@@ -22,20 +24,6 @@ const carveRoom = (tiles, room) => {
         }
     }
 };
-const carveHorizontalTunnel = (tiles, x1, x2, y) => {
-    const start = Math.min(x1, x2);
-    const end = Math.max(x1, x2);
-    for (let x = start; x <= end; x += 1) {
-        tiles[y][x] = 'floor';
-    }
-};
-const carveVerticalTunnel = (tiles, y1, y2, x) => {
-    const start = Math.min(y1, y2);
-    const end = Math.max(y1, y2);
-    for (let y = start; y <= end; y += 1) {
-        tiles[y][x] = 'floor';
-    }
-};
 const intersects = (a, b) => a.x <= b.x + b.w && a.x + a.w >= b.x && a.y <= b.y + b.h && a.y + a.h >= b.y;
 const createRoom = (x, y, w, h) => ({
     x,
@@ -47,19 +35,11 @@ const createRoom = (x, y, w, h) => ({
         y: Math.floor(y + h / 2),
     },
 });
-const connectRooms = (tiles, from, to, random) => {
-    if (random() > 0.5) {
-        carveHorizontalTunnel(tiles, from.x, to.x, from.y);
-        carveVerticalTunnel(tiles, from.y, to.y, to.x);
-        return;
-    }
-    carveVerticalTunnel(tiles, from.y, to.y, from.x);
-    carveHorizontalTunnel(tiles, from.x, to.x, to.y);
-};
 const generateRandomRooms = (config, random) => {
     const tiles = createFilledGrid(config);
     const rooms = [];
-    for (let i = 0; i < config.targetRooms; i += 1) {
+    const placementAttempts = config.targetRooms * 24;
+    for (let attempt = 0; attempt < placementAttempts && rooms.length < config.targetRooms; attempt += 1) {
         const w = randomBetween(random, config.minRoomSize, config.maxRoomSize);
         const h = randomBetween(random, config.minRoomSize, config.maxRoomSize);
         if (config.width - w - 2 <= 1 || config.height - h - 2 <= 1) {
@@ -72,9 +52,6 @@ const generateRandomRooms = (config, random) => {
             continue;
         }
         carveRoom(tiles, room);
-        if (rooms.length > 0) {
-            connectRooms(tiles, rooms[rooms.length - 1].center, room.center, random);
-        }
         rooms.push(room);
     }
     return { tiles, rooms };
@@ -83,16 +60,22 @@ const generateFallbackRooms = (config, random) => {
     const tiles = createFilledGrid(config);
     const roomWidth = Math.max(config.minRoomSize + 1, Math.floor(config.width / 6));
     const roomHeight = Math.max(config.minRoomSize + 1, Math.floor(config.height / 3));
+    const left = 2;
+    const middle = Math.max(left + roomWidth + 1, Math.floor((config.width - roomWidth) / 2));
+    const right = Math.max(middle + roomWidth + 1, config.width - roomWidth - 2);
+    const top = 2;
+    const bottom = Math.max(top + roomHeight + 1, config.height - roomHeight - 2);
     const rooms = [
-        createRoom(2, Math.max(2, Math.floor(config.height / 3)), roomWidth, roomHeight),
-        createRoom(Math.max(6, Math.floor(config.width / 3)), 2, roomWidth + 1, roomHeight + 1),
-        createRoom(Math.max(10, config.width - roomWidth - 3), Math.max(4, Math.floor(config.height / 2)), roomWidth, roomHeight),
+        createRoom(left, top, roomWidth, roomHeight),
+        createRoom(middle, top, roomWidth, roomHeight),
+        createRoom(right, top, roomWidth, roomHeight),
+        createRoom(left, bottom, roomWidth, roomHeight),
+        createRoom(middle, bottom, roomWidth, roomHeight),
+        createRoom(right, bottom, roomWidth, roomHeight),
     ];
     for (const room of rooms) {
         carveRoom(tiles, room);
     }
-    connectRooms(tiles, rooms[0].center, rooms[1].center, random);
-    connectRooms(tiles, rooms[1].center, rooms[2].center, random);
     return { tiles, rooms };
 };
 const buildDungeonLayout = (config, random) => {
@@ -131,17 +114,18 @@ export const generateDungeon = (config, seed) => {
         id: `room-${index}`,
         archetype: archetypes[index],
     }));
-    const doors = createDoorLayout(tiles, roomData, random);
+    const connections = carveDungeonTopology(tiles, roomData, random);
+    const doors = createDoorLayout(tiles, roomData, connections, random);
     tiles[objective.y][objective.x] = 'objective';
     tiles[extraction.y][extraction.x] = 'extraction';
     return {
         tiles,
         rooms: roomData,
         doors,
+        connections,
         playerStart,
         objective,
         extraction,
         config,
     };
 };
-import { assignRoomArchetypes } from './RoomArchetypes';
