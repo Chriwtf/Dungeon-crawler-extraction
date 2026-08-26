@@ -36,6 +36,7 @@ export async function startVerticalSlice() {
         throw new Error('Missing application root.');
     app.innerHTML = `
     <canvas id="stage" aria-label="Dungeon extraction 3D vertical slice"></canvas>
+    <div class="atmosphere-vignette" aria-hidden="true"></div>
     <section class="run-hud" aria-live="polite">
       <p class="run-label">DRIFT // EXTRACTION PROTOCOL</p>
       <p id="turn-readout">TURN 000</p>
@@ -84,23 +85,23 @@ export async function startVerticalSlice() {
         maxDevicePixelRatio: 1.75,
         directionalShadows: true,
         hdrScene: true,
-        bloom: 0.35,
-        bloomThreshold: 0.6,
+        bloom: 0.48,
+        bloomThreshold: 0.52,
         outputTransform: 'aces',
-        outputExposure: 1.65,
+        outputExposure: 1.78,
     });
     hud.backend.textContent = `${backend.toUpperCase()} // ${reason}`;
     renderer.resize();
     addEventListener('resize', () => renderer.resize());
     const environment = createEnvironment({
         directionalDir: [0.25, 0.7, -0.3],
-        directionalColor: [0.08, 0.11, 0.1],
-        ambient: [0.012, 0.018, 0.015],
-        ambientGround: [0.004, 0.006, 0.005],
-        emissiveGain: 0.5,
+        directionalColor: [0.11, 0.15, 0.13],
+        ambient: [0.022, 0.03, 0.026],
+        ambientGround: [0.008, 0.012, 0.01],
+        emissiveGain: 0.65,
         nightFactor: 1,
         fogColor: [0.012, 0.025, 0.02],
-        fogDensity: 0.012,
+        fogDensity: 0.014,
         fogHeightFalloff: 0.04,
         fogBaseY: 0,
     });
@@ -122,11 +123,13 @@ export async function startVerticalSlice() {
     const extractionPosition = pointToWorld(dungeon, dungeon.extraction);
     const startPosition = pointToWorld(dungeon, dungeon.playerStart);
     const lootSpawns = placeRunLoot(dungeon, RUN_SEED);
+    const emergencyPositions = selectEmergencyPositions(dungeon, 7).map((point) => pointToWorld(dungeon, point));
     const relicPedestal = renderer.createMesh(buildRelicPedestal().build());
     const relicCore = renderer.createMesh(buildRelicCore().build());
     const extractionFrame = renderer.createMesh(buildExtractionFrame().build());
     const extractionLocked = renderer.createMesh(buildExtractionSignal([1, 0.08, 0.05]).build());
     const extractionReady = renderer.createMesh(buildExtractionSignal([0.1, 1, 0.45]).build());
+    const emergencyLamp = renderer.createMesh(buildEmergencyLamp().build());
     const apexMesh = renderer.createMesh(buildApex().build());
     const objectiveTextures = buildObjectiveTextureMeshes();
     const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
@@ -159,12 +162,18 @@ export async function startVerticalSlice() {
         return node;
     });
     const apexNode = new SceneNode();
+    const emergencyNodes = emergencyPositions.map((position) => {
+        const node = new SceneNode();
+        node.setPosition(position.x, 2.75, position.z);
+        return node;
+    });
     const camera = new Camera();
     const player = { x: startPosition.x, z: startPosition.z };
     let facing = 1;
     const simulation = new RunSimulation(RUN_SEED);
     const apex = new ApexDirector(dungeon);
     let apexVisible = false;
+    let apexMode = 'dormant';
     let hasRelic = false;
     let completed = false;
     let lootValue = 0;
@@ -173,6 +182,7 @@ export async function startVerticalSlice() {
     let torchOn = true;
     let relicSpin = 0;
     let previousRelicSpin = 0;
+    let visualTime = 0;
     const lightBuffer = createPointLightBuffer();
     const updateCamera = () => {
         const [dx, dz] = CARDINALS[facing];
@@ -222,6 +232,8 @@ export async function startVerticalSlice() {
         const apexWorld = pointToWorld(dungeon, apexEvent.position);
         apexNode.setPosition(apexWorld.x, 0, apexWorld.z);
         apexVisible = apexEvent.visible;
+        apexMode = apexEvent.mode;
+        app.dataset.apexMode = apexMode;
         hud.turn.textContent = `TURN ${String(event.turn).padStart(3, '0')}`;
         hud.pressure.textContent = `THREAT: ${event.pressure}% // NOISE: ${event.noiseLevel}`;
         hud.echo.textContent = pulse.intensity === 0
@@ -325,6 +337,7 @@ export async function startVerticalSlice() {
         simulate(dt) {
             previousRelicSpin = relicSpin;
             relicSpin += dt * 1.4;
+            visualTime += dt;
         },
         render(alpha) {
             const interpolatedSpin = previousRelicSpin + (relicSpin - previousRelicSpin) * alpha;
@@ -335,6 +348,8 @@ export async function startVerticalSlice() {
             for (const node of lootNodes)
                 node.updateWorld();
             apexNode.updateWorld();
+            for (const node of emergencyNodes)
+                node.updateWorld();
             updateCamera();
             camera.updateMatrices(canvas.height > 0 ? canvas.width / canvas.height : 1);
             const lights = torchOn
@@ -346,7 +361,7 @@ export async function startVerticalSlice() {
                         g: 4.5,
                         b: 3.8,
                         radius: torchSight,
-                        flicker: 0,
+                        flicker: 0.18,
                         shadowNear: 0.15,
                         sourceRadius: 0.08,
                     }]
@@ -363,6 +378,21 @@ export async function startVerticalSlice() {
                     flicker: 0,
                     shadowNear: 0.1,
                     sourceRadius: 0.06,
+                });
+            }
+            const alertPulse = apexMode === 'hunting' ? 0.7 + Math.sin(visualTime * 8) * 0.3 : 0.36;
+            for (const position of emergencyPositions) {
+                lights.push({
+                    x: position.x,
+                    y: 2.65,
+                    z: position.z,
+                    r: apexMode === 'hunting' ? alertPulse : 0.42,
+                    g: apexMode === 'hunting' ? 0.025 : 0.06,
+                    b: apexMode === 'hunting' ? 0.015 : 0.045,
+                    radius: apexMode === 'hunting' ? 4.4 : 3.1,
+                    flicker: apexMode === 'hunting' ? 0.65 : 0.22,
+                    shadowNear: 0.1,
+                    sourceRadius: 0.04,
                 });
             }
             lights.push({
@@ -385,6 +415,9 @@ export async function startVerticalSlice() {
             environment.lightSourceRadii = lightBuffer.sourceRadii;
             environment.lightWeights = lightBuffer.weights;
             environment.activeLightWorldIndices = lightBuffer.sourceIndex;
+            environment.fogDensity = apexMode === 'hunting'
+                ? 0.024
+                : 0.014 + Math.min(0.007, simulation.pressure * 0.00007);
             renderer.beginFrame([0.004, 0.009, 0.007]);
             renderer.bindMeshPass(camera, environment);
             renderer.setSurfaceTexture(floorTexture, 1.4, 1.4);
@@ -392,6 +425,8 @@ export async function startVerticalSlice() {
             renderer.setSurfaceTexture(wallTexture, 1, 1.8);
             renderer.drawMesh(walls, identity.worldMatrix);
             renderer.setSurfaceTexture(null);
+            for (const node of emergencyNodes)
+                renderer.drawMesh(emergencyLamp, node.worldMatrix);
             if (!hasRelic) {
                 renderer.drawMesh(relicPedestal, relicPedestalNode.worldMatrix);
                 renderer.setSurfaceTexture(relicTexture);
@@ -443,6 +478,13 @@ function buildApex() {
     mesh.addSphere([0, 1.55, 0.23], 0.055, [0.85, 0.08, 0.025], 1, 8, 5);
     return mesh;
 }
+function buildEmergencyLamp() {
+    const mesh = new MeshBuilder();
+    mesh.addCylinder([0, 0, 0], 0.13, 0.08, 'y', [0.045, 0.055, 0.05], 0, 10, 0.35);
+    mesh.addSphere([0, -0.11, 0], 0.09, [0.95, 0.08, 0.025], 1, 8, 5);
+    mesh.addBox([0, 0.12, 0], [0.05, 0.08, 0.05], [0.08, 0.1, 0.09], 0, 0.25);
+    return mesh;
+}
 function buildExtractionFrame() {
     const mesh = new MeshBuilder();
     mesh.addCylinder([0, 0.06, 0], 1.25, 0.06, 'y', [0.1, 0.13, 0.12], 0, 12, 0.55);
@@ -465,6 +507,18 @@ function buildExtractionSignal(color) {
 function isWalkable(dungeon, position) {
     const point = worldToPoint(dungeon, position.x, position.z);
     return dungeon.tiles[point.y]?.[point.x] !== undefined && dungeon.tiles[point.y][point.x] !== 'wall';
+}
+function selectEmergencyPositions(dungeon, count) {
+    const candidates = [];
+    for (let y = 0; y < dungeon.tiles.length; y += 1) {
+        for (let x = 0; x < dungeon.tiles[y].length; x += 1) {
+            if (dungeon.tiles[y][x] === 'wall')
+                continue;
+            if ((x * 11 + y * 7 + RUN_SEED) % 9 === 0)
+                candidates.push({ x, y });
+        }
+    }
+    return candidates.slice(0, count);
 }
 function distance(a, b) {
     return Math.hypot(a.x - b.x, a.z - b.z);

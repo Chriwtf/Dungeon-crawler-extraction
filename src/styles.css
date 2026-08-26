@@ -82,10 +82,30 @@ canvas {
   box-shadow: none;
 }
 
+.atmosphere-vignette {
+  position: fixed;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.42;
+  background:
+    radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.12) 62%, rgba(0, 0, 0, 0.72) 100%),
+    linear-gradient(90deg, rgba(3, 19, 11, 0.18), transparent 18%, transparent 82%, rgba(3, 19, 11, 0.18));
+  transition: opacity 300ms ease, background 300ms ease;
+}
+
+#app[data-apex-mode="hunting"] .atmosphere-vignette {
+  opacity: 0.92;
+  background:
+    radial-gradient(ellipse at center, transparent 24%, rgba(44, 5, 2, 0.22) 64%, rgba(55, 3, 1, 0.85) 100%),
+    linear-gradient(90deg, rgba(78, 6, 2, 0.34), transparent 22%, transparent 78%, rgba(78, 6, 2, 0.34));
+  animation: hunter-pulse 0.8s steps(2, end) infinite;
+}
+
 .run-hud,
 .run-help {
   position: fixed;
-  z-index: 1;
+  z-index: 2;
   color: #a9fbc9;
   font-size: clamp(0.65rem, 1.3vw, 0.9rem);
   letter-spacing: 0.08em;
@@ -120,6 +140,14 @@ canvas {
 #message-readout {
   color: #72d999;
   min-height: 3.2em;
+}
+
+#apex-readout {
+  color: #ff8a68;
+}
+
+@keyframes hunter-pulse {
+  50% { opacity: 0.66; }
 }
 
 .upgrade-panel {
