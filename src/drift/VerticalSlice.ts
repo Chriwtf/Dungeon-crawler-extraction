@@ -28,7 +28,7 @@ import { buildApexMesh, buildEnemyMeshes } from './EnemyProps3d';
 import { buildContainerMeshes } from './ContainerProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
 import { RunAudio } from './RunAudio';
-import { animateRig, createRiggedEnemyNode, loadRiggedEnemyAssets } from './RiggedEnemyAssets';
+import { animateRig, createRiggedAnimator, createRiggedEnemyNode, loadRiggedEnemyAssets, type CreatureAnimationState, type RiggedAnimator } from './RiggedEnemyAssets';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
 import relicTextureUrl from '../assets/textures/relic-pedestal-albedo.png?url';
@@ -292,6 +292,7 @@ export async function startVerticalSlice(): Promise<void> {
   const apexNode = new SceneNode();
   const apexRigNode = createRiggedEnemyNode('apex');
   apexNode.attachChild(apexRigNode);
+  const apexAnimator = riggedEnemies.apex === null ? null : createRiggedAnimator(riggedEnemies.apex);
   const emergencyNodes = emergencyPositions.map((position) => {
     const node = new SceneNode();
     node.setPosition(position.x, 2.75, position.z);
@@ -318,6 +319,7 @@ export async function startVerticalSlice(): Promise<void> {
   const enemies = new EnemyDirector(dungeon, RUN_SEED);
   const enemyNodes = new Map<number, SceneNode>();
   const enemyRigNodes = new Map<number, SceneNode>();
+  const enemyAnimators = new Map<number, RiggedAnimator>();
   const syncEnemyNodes = (snapshots: readonly EnemySnapshot[]) => {
     for (const enemy of snapshots) {
       let node = enemyNodes.get(enemy.id);
@@ -327,6 +329,8 @@ export async function startVerticalSlice(): Promise<void> {
         const rigNode = createRiggedEnemyNode(enemy.kind);
         node.attachChild(rigNode);
         enemyRigNodes.set(enemy.id, rigNode);
+        const rigged = riggedEnemies[enemy.kind];
+        if (rigged !== null) enemyAnimators.set(enemy.id, createRiggedAnimator(rigged));
       }
       const position = pointToWorld(dungeon, enemy.position);
       node.setPosition(position.x, 0, position.z);
@@ -821,9 +825,9 @@ export async function startVerticalSlice(): Promise<void> {
       if (apexVisible && exploration.isVisible(apexPosition)) {
         const rigged = riggedEnemies.apex;
         if (rigged !== null) {
-          animateRig(rigged, visualTime);
+          if (apexAnimator !== null) animateRig(apexAnimator, apexAnimationState(apexMode), 1 / 60);
           renderer.setSurfaceTexture(null);
-          renderer.setSkinPalette(rigged.skeleton.palette);
+          renderer.setSkinPalette(apexAnimator?.skeleton.palette ?? null);
           for (const mesh of rigged.meshes) renderer.drawMesh(mesh, apexRigNode.worldMatrix);
           renderer.setSkinPalette(null);
         } else {
@@ -838,9 +842,10 @@ export async function startVerticalSlice(): Promise<void> {
         if (node !== undefined) {
           const rigged = riggedEnemies[enemy.kind];
           if (rigged !== null) {
-            animateRig(rigged, visualTime + enemy.id * 0.17);
+            const animator = enemyAnimators.get(enemy.id);
+            if (animator !== undefined) animateRig(animator, enemyAnimationState(enemy.state), 1 / 60);
             renderer.setSurfaceTexture(null);
-            renderer.setSkinPalette(rigged.skeleton.palette);
+            renderer.setSkinPalette(animator?.skeleton.palette ?? null);
             const rigNode = enemyRigNodes.get(enemy.id);
             if (rigNode !== undefined) {
               for (const mesh of rigged.meshes) renderer.drawMesh(mesh, rigNode.worldMatrix);
@@ -953,6 +958,15 @@ function apexReadout(mode: ApexMode, relicSecured: boolean): string {
   if (mode === 'hunting') return 'YOU ARE BEING HUNTED';
   if (mode === 'searching') return relicSecured ? 'SOMETHING FOLLOWS THE SIGNAL' : 'SOMETHING IS LOOKING';
   return 'THE DARK IS STILL';
+}
+
+function enemyAnimationState(state: EnemySnapshot['state']): CreatureAnimationState {
+  if (state === 'attack') return 'attack';
+  return state === 'idle' ? 'idle' : 'move';
+}
+
+function apexAnimationState(mode: ApexMode): CreatureAnimationState {
+  return mode === 'dormant' ? 'idle' : mode === 'searching' ? 'move' : 'attack';
 }
 
 function meter(value: number, maximum: number): string {

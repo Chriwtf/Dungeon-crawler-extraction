@@ -1,4 +1,4 @@
-import { createPose, sampleClip, Skeleton } from '@driftengine/animation';
+import { AnimationStateMachine, BlendTree, createPose, Skeleton } from '@driftengine/animation';
 import { gltfToMeshes, readGlb, readGltfSkins } from '@driftengine/assets';
 import { SceneNode } from '@driftengine/core';
 import guardUrl from '../assets/models/characters/guard-rigged.glb?url';
@@ -14,13 +14,32 @@ export async function loadRiggedEnemyAssets(renderer) {
     const [guard, crawler, apex] = await Promise.all([loadRigged(renderer, guardUrl), loadRigged(renderer, crawlerUrl), loadRigged(renderer, apexUrl)]);
     return { guard, crawler, apex };
 }
-export function animateRig(asset, time) {
-    sampleClip(asset.clip, time % asset.duration, asset.pose);
-    if (asset.rootMotionJoint >= 0) {
+export function createRiggedAnimator(asset) {
+    const jointCount = asset.joints.length;
+    const machine = new AnimationStateMachine([
+        { name: 'idle', tree: new BlendTree({ kind: 'clip', clip: asset.clips.idle }, jointCount) },
+        { name: 'move', tree: new BlendTree({ kind: 'clip', clip: asset.clips.move }, jointCount) },
+        { name: 'attack', tree: new BlendTree({ kind: 'clip', clip: asset.clips.attack }, jointCount) },
+    ], [
+        { from: 'idle', to: 'attack', durationSec: 0.12, when: (p) => p.attack > 0 },
+        { from: 'idle', to: 'move', durationSec: 0.18, when: (p) => p.move > 0 },
+        { from: 'move', to: 'attack', durationSec: 0.1, when: (p) => p.attack > 0 },
+        { from: 'move', to: 'idle', durationSec: 0.18, when: (p) => p.move <= 0 },
+        { from: 'attack', to: 'move', durationSec: 0.14, when: (p) => p.attack <= 0 && p.move > 0 },
+        { from: 'attack', to: 'idle', durationSec: 0.14, when: (p) => p.attack <= 0 && p.move <= 0 },
+    ], jointCount);
+    return { skeleton: new Skeleton(asset.joints, asset.inverseBind), pose: createPose(jointCount), machine, rootMotionJoint: asset.rootMotionJoint };
+}
+export function animateRig(animator, state, dt) {
+    animator.machine.set('move', state === 'move' ? 1 : 0);
+    animator.machine.set('attack', state === 'attack' ? 1 : 0);
+    animator.machine.advance(dt);
+    animator.machine.evaluate(animator.pose);
+    if (animator.rootMotionJoint >= 0) {
         // Gameplay owns world movement; discard the clip's locomotion before skinning.
-        asset.pose.translation.fill(0, asset.rootMotionJoint * 3, asset.rootMotionJoint * 3 + 3);
+        animator.pose.translation.fill(0, animator.rootMotionJoint * 3, animator.rootMotionJoint * 3 + 3);
     }
-    asset.skeleton.applyPose(asset.pose);
+    animator.skeleton.applyPose(animator.pose);
 }
 /**
  * Gobkit characters are authored Z-up; place them under the gameplay node so
@@ -48,11 +67,42 @@ async function loadRigged(renderer, url) {
         if (skin === undefined || clip === undefined)
             return null;
         const imported = gltfToMeshes(json, [binary]);
-        const duration = Math.max(0.01, clip.durationSec);
         const rootMotionJoint = skin.joints.findIndex((joint) => joint.name.toLowerCase() === 'hips');
-        return { meshes: imported.meshes.map((mesh) => renderer.createMesh(mesh)), skeleton: new Skeleton(skin.joints, skin.inverseBind), pose: createPose(skin.joints.length), clip, duration, rootMotionJoint };
+        const clips = {
+            idle: clipSegment(clip, 0, 1.25, 'idle'),
+            // The source pack has no dedicated walk clip, so its calm loop is the explicit fallback.
+            move: clipSegment(clip, 0, 1.25, 'move-fallback'),
+            attack: clipSegment(clip, 1.25, 2.5, 'attack'),
+        };
+        return { meshes: imported.meshes.map((mesh) => renderer.createMesh(mesh)), joints: skin.joints, inverseBind: skin.inverseBind, clips, rootMotionJoint };
     }
     catch {
         return null;
     }
+}
+function clipSegment(source, start, end, name) {
+    const safeEnd = Math.min(Math.max(start + 0.01, end), source.durationSec);
+    return {
+        name,
+        durationSec: safeEnd - start,
+        tracks: source.tracks.map((track) => {
+            const width = track.path === 'rotation' ? 4 : 3;
+            const keys = [];
+            for (let index = 0; index < track.times.length; index += 1) {
+                const time = track.times[index] ?? 0;
+                if (time >= start && time <= safeEnd)
+                    keys.push(index);
+            }
+            if (keys.length === 0)
+                keys.push(0);
+            const times = new Float32Array(keys.length);
+            const values = new Float32Array(keys.length * width);
+            for (let index = 0; index < keys.length; index += 1) {
+                const key = keys[index] ?? 0;
+                times[index] = (track.times[key] ?? start) - start;
+                values.set(track.values.subarray(key * width, key * width + width), index * width);
+            }
+            return { joint: track.joint, path: track.path, times, values };
+        }),
+    };
 }
