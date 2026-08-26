@@ -5,23 +5,27 @@ type UvRect = readonly [number, number, number, number];
 type Color = readonly [number, number, number];
 type Palette = { readonly torso: Color; readonly head: Color; readonly arm: Color; readonly leg: Color };
 
-const GUARD: Record<string, UvRect> = {
-  torso: [0.03, 0.08, 0.38, 0.43], head: [0.38, 0.02, 0.58, 0.18],
-  arm: [0.57, 0.06, 0.77, 0.35], leg: [0.04, 0.58, 0.38, 0.98],
-};
-const CRAWLER: Record<string, UvRect> = {
-  torso: [0.2, 0.02, 0.7, 0.48], head: [0.0, 0.03, 0.2, 0.28],
-  arm: [0.0, 0.34, 0.25, 0.76], leg: [0.55, 0.48, 0.96, 0.97],
-};
+// Every body part receives a coherent material sample; arbitrary atlas fragments made
+// the previous characters read as texture slabs rather than creatures.
+const MATERIAL: UvRect = [0.06, 0.06, 0.94, 0.94];
+const GUARD: Record<string, UvRect> = { torso: MATERIAL, head: MATERIAL, arm: MATERIAL, leg: MATERIAL };
+const CRAWLER: Record<string, UvRect> = { torso: MATERIAL, head: MATERIAL, arm: MATERIAL, leg: MATERIAL };
 
 /** Hand-authored low-poly humanoids, with each body part mapped to its atlas region. */
 export function buildEnemyMeshes(): Record<EnemyKind, MeshData> {
   const guard = new CharacterMeshBuilder();
   addHumanoid(guard, GUARD, { torso: [0.94, 0.94, 0.94], head: [0.86, 0.9, 0.9], arm: [0.9, 0.94, 0.88], leg: [0.88, 0.92, 0.86] }, { height: 1.72, shoulder: 0.35, torso: 0.27, limb: 0.095, stance: 0.17 });
+  guard.addBox([0, 1.22, 0.2], [0.38, 0.2, 0.07], [0.72, 0.8, 0.76], GUARD.torso);
+  guard.addBox([0, 1.72, 0.01], [0.2, 0.08, 0.2], [0.68, 0.76, 0.72], GUARD.head);
+  guard.addBox([0, 0.82, 0.16], [0.29, 0.04, 0.05], [0.8, 0.84, 0.78], GUARD.torso);
   guard.addBox([0, 1.58, 0.17], [0.18, 0.07, 0.035], [0.9, 0.9, 0.9], GUARD.torso);
 
   const crawler = new CharacterMeshBuilder();
   addHumanoid(crawler, CRAWLER, { torso: [0.82, 0.94, 0.82], head: [0.86, 0.98, 0.86], arm: [0.84, 0.95, 0.84], leg: [0.58, 0.68, 0.58] }, { height: 1.28, shoulder: 0.31, torso: 0.25, limb: 0.1, stance: 0.21, crouch: 0.22 });
+  crawler.addBox([0, 0.98, -0.1], [0.28, 0.12, 0.31], [0.46, 0.58, 0.48], CRAWLER.torso);
+  crawler.addBox([0, 1.18, -0.16], [0.17, 0.07, 0.22], [0.5, 0.62, 0.5], CRAWLER.torso);
+  crawler.addBox([-0.22, 0.42, 0.18], [0.11, 0.04, 0.2], [0.5, 0.6, 0.5], CRAWLER.arm);
+  crawler.addBox([0.22, 0.42, 0.18], [0.11, 0.04, 0.2], [0.5, 0.6, 0.5], CRAWLER.arm);
   crawler.addBox([0, 1.03, 0.19], [0.23, 0.12, 0.08], [0.62, 0.68, 0.58], CRAWLER.torso);
   return { guard: guard.build(), crawler: crawler.build() };
 }
@@ -32,6 +36,9 @@ export function buildApexMesh(): MeshData {
   const material: UvRect = [0.06, 0.08, 0.94, 0.92];
   addHumanoid(apex, { torso: material, head: material, arm: material, leg: material }, { torso: [0.82, 0.9, 1], head: [0.75, 0.84, 0.94], arm: [0.78, 0.88, 0.98], leg: [0.74, 0.84, 0.94] }, { height: 2.02, shoulder: 0.28, torso: 0.2, limb: 0.07, stance: 0.13 });
   apex.addBox([0, 1.83, 0.15], [0.14, 0.1, 0.06], [0.82, 0.9, 1], material);
+  apex.addBox([0, 1.42, -0.11], [0.31, 0.42, 0.06], [0.55, 0.66, 0.76], material);
+  apex.addBox([-0.25, 1.94, -0.03], [0.05, 0.22, 0.05], [0.7, 0.8, 0.9], material);
+  apex.addBox([0.25, 1.94, -0.03], [0.05, 0.22, 0.05], [0.7, 0.8, 0.9], material);
   apex.addBox([-0.33, 1.08, 0.03], [0.035, 0.52, 0.035], [0.78, 0.88, 0.98], material);
   apex.addBox([0.33, 1.08, 0.03], [0.035, 0.52, 0.035], [0.78, 0.88, 0.98], material);
   return apex.build();
