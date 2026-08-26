@@ -28,6 +28,7 @@ import { buildApexMesh, buildEnemyMeshes } from './EnemyProps3d';
 import { buildContainerMeshes } from './ContainerProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
 import { RunAudio } from './RunAudio';
+import { animateRig, loadRiggedEnemyAssets } from './RiggedEnemyAssets';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
 import relicTextureUrl from '../assets/textures/relic-pedestal-albedo.png?url';
@@ -219,6 +220,7 @@ export async function startVerticalSlice(): Promise<void> {
   const emergencyLamp = renderer.createMesh(buildEmergencyLamp().build());
   const dungeonDoor = renderer.createMesh(buildDungeonDoor().build());
   const enemyProps = buildEnemyMeshes();
+  const riggedEnemies = await loadRiggedEnemyAssets(renderer);
   const containerProps = buildContainerMeshes();
   const containerMeshes = {
     keyLocker: renderer.createMesh(containerProps.keyLocker),
@@ -811,7 +813,16 @@ export async function startVerticalSlice(): Promise<void> {
       }
       renderer.setSurfaceTexture(apexMaterialTexture, 1, 1);
       if (apexVisible && exploration.isVisible(apexPosition)) {
-        renderer.drawMesh(apexMesh, apexNode.worldMatrix);
+        const rigged = riggedEnemies.apex;
+        if (rigged !== null) {
+          animateRig(rigged, visualTime);
+          renderer.setSurfaceTexture(null);
+          renderer.setSkinPalette(rigged.skeleton.palette);
+          for (const mesh of rigged.meshes) renderer.drawMesh(mesh, apexNode.worldMatrix);
+          renderer.setSkinPalette(null);
+        } else {
+          renderer.drawMesh(apexMesh, apexNode.worldMatrix);
+        }
         renderer.setSurfaceTexture(null);
         renderer.drawMesh(apexEyes, apexNode.worldMatrix);
       }
@@ -819,8 +830,17 @@ export async function startVerticalSlice(): Promise<void> {
         if (!exploration.isVisible(enemy.position)) continue;
         const node = enemyNodes.get(enemy.id);
         if (node !== undefined) {
-          renderer.setSurfaceTexture(enemy.kind === 'crawler' ? crawlerMaterialTexture : guardMaterialTexture, 1, 1);
-          renderer.drawMesh(enemyMeshes[enemy.kind], node.worldMatrix);
+          const rigged = riggedEnemies[enemy.kind];
+          if (rigged !== null) {
+            animateRig(rigged, visualTime + enemy.id * 0.17);
+            renderer.setSurfaceTexture(null);
+            renderer.setSkinPalette(rigged.skeleton.palette);
+            for (const mesh of rigged.meshes) renderer.drawMesh(mesh, node.worldMatrix);
+            renderer.setSkinPalette(null);
+          } else {
+            renderer.setSurfaceTexture(enemy.kind === 'crawler' ? crawlerMaterialTexture : guardMaterialTexture, 1, 1);
+            renderer.drawMesh(enemyMeshes[enemy.kind], node.worldMatrix);
+          }
         }
       }
       if (exploration.isVisible(dungeon.extraction)) {

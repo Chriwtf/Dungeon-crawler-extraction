@@ -6,7 +6,7 @@ import guardUrl from '../assets/models/characters/guard-rigged.glb?url';
 import crawlerUrl from '../assets/models/characters/crawler-rigged.glb?url';
 import apexUrl from '../assets/models/characters/apex-rigged.glb?url';
 
-type RiggedAsset = { readonly meshes: ReturnType<RendererApi['createMesh']>[]; readonly skeleton: Skeleton; readonly pose: ReturnType<typeof createPose>; readonly clip: ReturnType<typeof readGltfSkins>['clips'][number]; readonly duration: number };
+export type RiggedAsset = { readonly meshes: ReturnType<RendererApi['createMesh']>[]; readonly skeleton: Skeleton; readonly pose: ReturnType<typeof createPose>; readonly clip: ReturnType<typeof readGltfSkins>['clips'][number]; readonly duration: number };
 
 /** Game-side GLB bridge: DriftEngine owns GLB parsing, skinning and clip sampling. */
 export async function loadRiggedEnemyAssets(renderer: RendererApi): Promise<Record<EnemyKind | 'apex', RiggedAsset | null>> {
