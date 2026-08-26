@@ -102,25 +102,27 @@ export async function startVerticalSlice(): Promise<void> {
     <canvas id="stage" aria-label="Dungeon extraction 3D vertical slice"></canvas>
     <canvas id="minimap" aria-label="Exploration minimap"></canvas>
     <div class="atmosphere-vignette" aria-hidden="true"></div>
-    <section class="run-hud" aria-live="polite">
-      <p class="run-label">DRIFT // EXTRACTION PROTOCOL</p>
-      <p id="turn-readout">TURN 000</p>
-      <p id="objective-readout">OBJECTIVE: RECOVER THE RELIC</p>
-      <p id="loot-readout">LOOT: 0 CR // LOAD: 0 KG</p>
-      <p id="stash-readout">STASH: 0 CR // EXTRACT TO BANK</p>
-      <p id="keys-readout">KEYS: NONE</p>
-      <p id="health-readout">VITALS: 36 / 36 // MEDKITS: 2</p>
-      <p id="pressure-readout">THREAT: 0% // NOISE: 0</p>
-      <p id="echo-readout">ECHO: SILENT</p>
-      <p id="facility-readout">FACILITY: NORMAL</p>
-      <p id="apex-readout">STALKER: DORMANT</p>
-      <p id="visibility-readout">TORCH: ON // SIGHT: 8M</p>
+    <section class="run-hud run-hud-left" aria-live="polite">
+      <p class="run-label">THE UNDERWORKS</p>
+      <p id="health-readout">HEALTH: 36 / 36 | MEDKITS: 2</p>
+      <p id="loot-readout">CARRIED: 0 CR | 0 KG</p>
+      <p id="stash-readout">BANK: 0 CR</p>
+      <p id="keys-readout">KEYRING: EMPTY</p>
+      <p id="visibility-readout">LANTERN: LIT | 8M</p>
       <p id="message-readout">The air is still. Move carefully.</p>
       <p id="interaction-readout"></p>
     </section>
+    <section class="run-hud run-hud-right" aria-live="polite">
+      <p id="turn-readout">TURN 000</p>
+      <p id="objective-readout">FIND THE RELIC</p>
+      <p id="pressure-readout">DANGER [----------]\nNOISE  [----------]</p>
+      <p id="apex-readout">THE DARK IS STILL</p>
+      <p id="facility-readout">THE FACILITY HUMS</p>
+      <p id="echo-readout">ECHO: SILENT</p>
+    </section>
     <section class="run-help">
-      <p>W / S: MOVE &nbsp; Q / E: TURN &nbsp; SPACE: ATTACK &nbsp; H: HEAVY &nbsp; G: GUARD &nbsp; D: DODGE &nbsp; I: MEDKIT</p>
-      <p>Each action advances the dungeon.</p>
+      <p>W/S MOVE | Q/E TURN | SPACE STRIKE | H HEAVY | G GUARD | D DODGE | I MEDKIT</p>
+      <p>Every action draws the dungeon closer.</p>
       <p id="backend-readout"></p>
     </section>
     <section id="upgrade-panel" class="upgrade-panel" hidden aria-label="Upgrade terminal">
@@ -353,13 +355,13 @@ export async function startVerticalSlice(): Promise<void> {
   };
 
   const updateStash = () => {
-    hud.stash.textContent = `STASH: ${progression.credits} CR // EXTRACT TO BANK`;
+    hud.stash.textContent = `BANK: ${progression.credits} CR`;
   };
   const updateCombatHud = () => {
-    hud.health.textContent = `VITALS: ${combat.hp} / ${combat.maxHp} // MEDKITS: ${combat.medkits}`;
+    hud.health.textContent = `HEALTH: ${combat.hp} / ${combat.maxHp} | MEDKITS: ${combat.medkits}`;
   };
   const updateKeysHud = () => {
-    hud.keys.textContent = keys.size === 0 ? 'KEYS: NONE' : `KEYS: ${[...keys].join(' // ')}`;
+    hud.keys.textContent = keys.size === 0 ? 'KEYRING: EMPTY' : `KEYRING: ${[...keys].join(' | ')}`;
   };
   const updateDoorPrompt = () => {
     const [dx, dz] = CARDINALS[facing];
@@ -435,12 +437,12 @@ export async function startVerticalSlice(): Promise<void> {
     const combatEvent = combat.resolveIncoming(incomingDamage);
     app.dataset.apexMode = apexMode;
     hud.turn.textContent = `TURN ${String(event.turn).padStart(3, '0')}`;
-    hud.pressure.textContent = `THREAT: ${event.pressure}% // NOISE: ${event.noiseLevel}`;
+    hud.pressure.textContent = `DANGER ${meter(event.pressure, 100)}\nNOISE  ${meter(event.noiseLevel, 20)}`;
     hud.echo.textContent = pulse.intensity === 0
       ? 'ECHO: FADING'
       : `ECHO: ${pulse.reachedTiles} TILES // RANGE: ${pulse.radiusTiles * STEP_METRES}M`;
-    hud.facility.textContent = `FACILITY: ${facilityLabel(facilityMode)}`;
-    hud.apex.textContent = relicSecured ? `STALKER: ${apexEvent.mode.toUpperCase()} // RELIC SIGNAL` : `STALKER: ${apexEvent.mode.toUpperCase()}`;
+    hud.facility.textContent = facilityReadout(facilityMode);
+    hud.apex.textContent = apexReadout(apexEvent.mode, relicSecured);
     hud.message.textContent = apexEvent.message ?? (combatEvent.avoided
       ? 'YOU DODGE THE INCOMING STRIKE.'
       : combatEvent.guarded
@@ -468,7 +470,7 @@ export async function startVerticalSlice(): Promise<void> {
     completed = true;
     progression = bankCredits(progression, lootValue);
     saveProgression(progression);
-    hud.stash.textContent = `STASH: ${progression.credits} CR // RUN BANKED`;
+    hud.stash.textContent = `BANK: ${progression.credits} CR`;
     hud.objective.textContent = 'EXTRACTION COMPLETE';
     hud.message.textContent = `EXTRACTED ${lootValue} CR IN ${simulation.turn} TURNS. Press reload to begin again.`;
   };
@@ -478,7 +480,7 @@ export async function startVerticalSlice(): Promise<void> {
 
     if (key === 'f') {
       torchOn = !torchOn;
-      hud.visibility.textContent = torchOn ? `TORCH: ON // SIGHT: ${torchSight}M` : 'TORCH: OFF // SIGHT: 2M';
+      hud.visibility.textContent = torchOn ? `LANTERN: LIT | ${torchSight}M` : 'LANTERN: DARK | 2M';
       advanceTurn('torch', torchOn ? 'The torch wakes with a dry electrical click.' : 'You kill the torch. The dark closes around you.');
       return;
     }
@@ -612,7 +614,7 @@ export async function startVerticalSlice(): Promise<void> {
       collectedLoot.add(recoveredLoot.id);
       lootValue += recoveredLoot.value;
       lootWeight += recoveredLoot.weight;
-      hud.loot.textContent = `LOOT: ${lootValue} CR // LOAD: ${lootWeight} KG`;
+      hud.loot.textContent = `CARRIED: ${lootValue} CR | ${lootWeight} KG`;
       hud.message.textContent = `SECURED: ${recoveredLoot.name.toUpperCase()} // +${recoveredLoot.value} CR // HEAVIER STEPS`;
     }
 
@@ -868,6 +870,22 @@ function selectEmergencyPositions(dungeon: ReturnType<typeof generateDungeon>, c
 
 function facilityLabel(mode: number): string {
   return mode === 2 ? 'BLACKOUT' : mode === 1 ? 'EMERGENCY' : 'NORMAL';
+}
+
+function facilityReadout(mode: number): string {
+  return mode === 2 ? 'THE LIGHTS DIE' : mode === 1 ? 'RED LIGHTS FLICKER' : 'THE FACILITY HUMS';
+}
+
+function apexReadout(mode: ApexMode, relicSecured: boolean): string {
+  if (mode === 'hunting') return 'YOU ARE BEING HUNTED';
+  if (mode === 'searching') return relicSecured ? 'SOMETHING FOLLOWS THE SIGNAL' : 'SOMETHING IS LOOKING';
+  return 'THE DARK IS STILL';
+}
+
+function meter(value: number, maximum: number): string {
+  const slots = 10;
+  const filled = Math.max(0, Math.min(slots, Math.ceil(value / maximum * slots)));
+  return `[${'#'.repeat(filled)}${'-'.repeat(slots - filled)}]`;
 }
 
 function facilityMessage(mode: number): string {

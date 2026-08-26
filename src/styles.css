@@ -85,7 +85,7 @@ canvas {
 #minimap {
   position: fixed;
   z-index: 2;
-  top: clamp(18px, 4vw, 44px);
+  top: clamp(9.4rem, 18vw, 13rem);
   right: clamp(18px, 4vw, 56px);
   width: min(10rem, 28vw);
   height: auto;
@@ -129,10 +129,17 @@ canvas {
   text-shadow: 0 0 12px rgba(58, 255, 149, 0.75);
 }
 
-.run-hud {
+.run-hud-left {
   top: clamp(18px, 4vw, 44px);
   left: clamp(18px, 4vw, 56px);
-  max-width: min(36rem, 75vw);
+  max-width: min(24rem, 65vw);
+}
+
+.run-hud-right {
+  top: clamp(18px, 4vw, 44px);
+  right: clamp(18px, 4vw, 56px);
+  max-width: min(23rem, 52vw);
+  text-align: right;
 }
 
 .run-help {
@@ -165,6 +172,7 @@ canvas {
 
 #apex-readout {
   color: #ff8a68;
+  font-weight: 700;
 }
 
 #health-readout {
@@ -173,6 +181,16 @@ canvas {
 
 #keys-readout {
   color: #8ee6ff;
+}
+
+#pressure-readout {
+  white-space: pre-line;
+  color: #f0c66f;
+}
+
+#echo-readout,
+#backend-readout {
+  display: none;
 }
 
 @keyframes hunter-pulse {
