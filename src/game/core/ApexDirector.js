@@ -1,5 +1,6 @@
 import { loadModule } from 'driftscript';
 import { isNoiseAudibleAt } from './NoiseSystem';
+import { findStepToward, samePoint } from '../world/DungeonPathfinding';
 import * as apexBrainScript from '../../drift/scripts/ApexBrain.drs';
 /** A deterministic hearing-first stalker. It never reads renderer state or player inputs directly. */
 export class ApexDirector {
@@ -89,37 +90,3 @@ function findFarthestFloor(dungeon, from) {
     }
     return farthest;
 }
-function findStepToward(dungeon, from, target) {
-    if (samePoint(from, target))
-        return from;
-    const queue = [{ ...from }];
-    const previous = new Map();
-    const visited = new Set([keyOf(from)]);
-    while (queue.length > 0) {
-        const current = queue.shift();
-        if (current === undefined || samePoint(current, target))
-            break;
-        for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
-            const next = { x: current.x + dx, y: current.y + dy };
-            if (dungeon.tiles[next.y]?.[next.x] === undefined || dungeon.tiles[next.y][next.x] === 'wall')
-                continue;
-            const key = keyOf(next);
-            if (visited.has(key))
-                continue;
-            visited.add(key);
-            previous.set(key, current);
-            queue.push(next);
-        }
-    }
-    if (!visited.has(keyOf(target)))
-        return from;
-    let step = { ...target };
-    let parent = previous.get(keyOf(step));
-    while (parent !== undefined && !samePoint(parent, from)) {
-        step = parent;
-        parent = previous.get(keyOf(step));
-    }
-    return step;
-}
-function samePoint(a, b) { return a.x === b.x && a.y === b.y; }
-function keyOf(point) { return `${point.x},${point.y}`; }

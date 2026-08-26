@@ -2,6 +2,7 @@ import { Camera, MeshBuilder, SceneNode, createPointLightBuffer, createEnvironme
 import { loadModule } from 'driftscript';
 import { ApexDirector } from '../game/core/ApexDirector';
 import { DoorSystem } from '../game/core/DoorSystem';
+import { EnemyDirector } from '../game/core/EnemyDirector';
 import { placeRunLoot } from '../game/core/RunLoot';
 import { propagateNoise } from '../game/core/NoiseSystem';
 import { UPGRADE_DEFINITIONS, bankCredits, buyUpgrade, getCargoNoiseReduction, getCarryCapacity, getTorchSight, loadProgression, saveProgression } from '../game/core/RunProgression';
@@ -12,6 +13,7 @@ import { TILE_METRES, buildDungeonMeshes, pointToWorld, worldToPoint } from './P
 import { buildObjectiveTextureMeshes } from './ObjectiveTextureMeshes';
 import { buildLootPropMeshes } from './LootProps3d';
 import { buildDungeonDoor } from './DoorProps3d';
+import { buildEnemyMeshes } from './EnemyProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
@@ -145,6 +147,11 @@ export async function startVerticalSlice() {
     const extractionReady = renderer.createMesh(buildExtractionSignal([0.1, 1, 0.45]).build());
     const emergencyLamp = renderer.createMesh(buildEmergencyLamp().build());
     const dungeonDoor = renderer.createMesh(buildDungeonDoor().build());
+    const enemyProps = buildEnemyMeshes();
+    const enemyMeshes = {
+        crawler: renderer.createMesh(enemyProps.crawler.build()),
+        guard: renderer.createMesh(enemyProps.guard.build()),
+    };
     const apexMesh = renderer.createMesh(buildApex().build());
     const objectiveTextures = buildObjectiveTextureMeshes();
     const relicTexturedPedestal = renderer.createMesh(objectiveTextures.relicPedestal);
@@ -209,6 +216,20 @@ export async function startVerticalSlice() {
     const facilityState = facilityModule.exports.createFacilityState();
     const updateFacility = facilityModule.exports.advance;
     const apex = new ApexDirector(dungeon);
+    const enemies = new EnemyDirector(dungeon, RUN_SEED);
+    const enemyNodes = new Map();
+    const syncEnemyNodes = (snapshots) => {
+        for (const enemy of snapshots) {
+            let node = enemyNodes.get(enemy.id);
+            if (node === undefined) {
+                node = new SceneNode();
+                enemyNodes.set(enemy.id, node);
+            }
+            const position = pointToWorld(dungeon, enemy.position);
+            node.setPosition(position.x, 0, position.z);
+        }
+    };
+    syncEnemyNodes(enemies.snapshots());
     let apexVisible = false;
     let apexPosition = dungeon.playerStart;
     let apexMode = 'dormant';
@@ -304,6 +325,8 @@ export async function startVerticalSlice() {
         apexPosition = apexEvent.position;
         apexVisible = apexEvent.visible;
         apexMode = apexEvent.mode;
+        const enemyEvent = enemies.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, torchOn, (point) => doorSystem.isBlocking(point));
+        syncEnemyNodes(enemyEvent.enemies);
         app.dataset.apexMode = apexMode;
         hud.turn.textContent = `TURN ${String(event.turn).padStart(3, '0')}`;
         hud.pressure.textContent = `THREAT: ${event.pressure}% // NOISE: ${event.noiseLevel}`;
@@ -312,7 +335,7 @@ export async function startVerticalSlice() {
             : `ECHO: ${pulse.reachedTiles} TILES // RANGE: ${pulse.radiusTiles * STEP_METRES}M`;
         hud.facility.textContent = `FACILITY: ${facilityLabel(facilityMode)}`;
         hud.apex.textContent = `STALKER: ${apexEvent.mode.toUpperCase()}`;
-        hud.message.textContent = apexEvent.message ?? (facilityMode !== previousFacilityMode
+        hud.message.textContent = apexEvent.message ?? enemyEvent.message ?? (facilityMode !== previousFacilityMode
             ? facilityMessage(facilityMode)
             : event.message);
         if (apexEvent.captured) {
@@ -341,7 +364,7 @@ export async function startVerticalSlice() {
             return;
         }
         if (key === 'x') {
-            if (!hasRelic && exploration.isVisible(dungeon.objective)) {
+            if (!hasRelic) {
                 hud.message.textContent = 'EXTRACTION LOCKED. RECOVER THE RELIC FIRST.';
             }
             else if (distance(player, extractionPosition) > EXTRACTION_RANGE) {
@@ -374,8 +397,11 @@ export async function startVerticalSlice() {
             return;
         const [dx, dz] = CARDINALS[facing];
         const next = { x: player.x + dx * STEP_METRES * direction, z: player.z + dz * STEP_METRES * direction };
-        if (!isWalkable(dungeon, doorSystem, next)) {
-            advanceTurn('blocked', 'The way is sealed. The sound of your attempt travels farther than it should.');
+        if (!isWalkable(dungeon, doorSystem, enemies, next)) {
+            const target = worldToPoint(dungeon, next.x, next.z);
+            advanceTurn('blocked', enemies.isOccupied(target)
+                ? 'A HOSTILE FIGURE BLOCKS THE WAY.'
+                : 'The way is sealed. The sound of your attempt travels farther than it should.');
             return;
         }
         player.x = next.x;
@@ -444,6 +470,8 @@ export async function startVerticalSlice() {
             for (const node of doorNodes)
                 node.updateWorld();
             apexNode.updateWorld();
+            for (const node of enemyNodes.values())
+                node.updateWorld();
             for (const node of emergencyNodes)
                 node.updateWorld();
             updateCamera();
@@ -533,7 +561,7 @@ export async function startVerticalSlice() {
             }
             for (const node of emergencyNodes)
                 renderer.drawMesh(emergencyLamp, node.worldMatrix);
-            if (!hasRelic) {
+            if (!hasRelic && exploration.isVisible(dungeon.objective)) {
                 renderer.drawMesh(relicPedestal, relicPedestalNode.worldMatrix);
                 renderer.setSurfaceTexture(relicTexture);
                 renderer.drawMesh(relicTexturedPedestal, relicPedestalNode.worldMatrix);
@@ -550,6 +578,13 @@ export async function startVerticalSlice() {
             renderer.setSurfaceTexture(null);
             if (apexVisible && exploration.isVisible(apexPosition))
                 renderer.drawMesh(apexMesh, apexNode.worldMatrix);
+            for (const enemy of enemies.snapshots()) {
+                if (!exploration.isVisible(enemy.position))
+                    continue;
+                const node = enemyNodes.get(enemy.id);
+                if (node !== undefined)
+                    renderer.drawMesh(enemyMeshes[enemy.kind], node.worldMatrix);
+            }
             if (exploration.isVisible(dungeon.extraction)) {
                 renderer.drawMesh(extractionFrame, extractionNode.worldMatrix);
                 renderer.setSurfaceTexture(extractionTexture);
@@ -612,9 +647,9 @@ function buildExtractionSignal(color) {
     mesh.addBox([-0.74, 0.31, 0], [0.05, 0.04, 0.18], color, 1);
     return mesh;
 }
-function isWalkable(dungeon, doors, position) {
+function isWalkable(dungeon, doors, enemies, position) {
     const point = worldToPoint(dungeon, position.x, position.z);
-    return dungeon.tiles[point.y]?.[point.x] !== undefined && dungeon.tiles[point.y][point.x] !== 'wall' && !doors.isBlocking(point);
+    return dungeon.tiles[point.y]?.[point.x] !== undefined && dungeon.tiles[point.y][point.x] !== 'wall' && !doors.isBlocking(point) && !enemies.isOccupied(point);
 }
 function selectEmergencyPositions(dungeon, count) {
     const candidates = [];

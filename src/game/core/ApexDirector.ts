@@ -1,6 +1,7 @@
 import type { DungeonData, Point } from '../world/DungeonGenerator';
 import { loadModule } from 'driftscript';
 import { isNoiseAudibleAt, type NoisePulse } from './NoiseSystem';
+import { findStepToward, samePoint } from '../world/DungeonPathfinding';
 import * as apexBrainScript from '../../drift/scripts/ApexBrain.drs';
 
 export type ApexMode = 'dormant' | 'searching' | 'hunting';
@@ -79,31 +80,3 @@ function findFarthestFloor(dungeon: DungeonData, from: Point): Point {
   }
   return farthest;
 }
-
-function findStepToward(dungeon: DungeonData, from: Point, target: Point): Point {
-  if (samePoint(from, target)) return from;
-  const queue: Point[] = [{ ...from }];
-  const previous = new Map<string, Point>();
-  const visited = new Set<string>([keyOf(from)]);
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (current === undefined || samePoint(current, target)) break;
-    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]] as const) {
-      const next = { x: current.x + dx, y: current.y + dy };
-      if (dungeon.tiles[next.y]?.[next.x] === undefined || dungeon.tiles[next.y][next.x] === 'wall') continue;
-      const key = keyOf(next);
-      if (visited.has(key)) continue;
-      visited.add(key);
-      previous.set(key, current);
-      queue.push(next);
-    }
-  }
-  if (!visited.has(keyOf(target))) return from;
-  let step = { ...target };
-  let parent = previous.get(keyOf(step));
-  while (parent !== undefined && !samePoint(parent, from)) { step = parent; parent = previous.get(keyOf(step)); }
-  return step;
-}
-
-function samePoint(a: Point, b: Point): boolean { return a.x === b.x && a.y === b.y; }
-function keyOf(point: Point): string { return `${point.x},${point.y}`; }

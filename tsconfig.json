@@ -4,6 +4,9 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "paths": {
+      "driftscript": ["../driftengine/packages/driftscript/src/index.ts"]
+    },
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "strict": true,

@@ -1,0 +1,34 @@
+// Per-enemy state transitions stay content-owned. The ECS adapter supplies only world facts.
+data EnemyMind {
+    state: f32 = 0
+}
+
+fn advance(mind: mut EnemyMind, distance: f32, canSee: bool, heard: bool, atTarget: bool, homeDistance: f32) {
+    if distance <= 1 {
+        mind.state = 3
+    }
+
+    if distance > 1 && canSee {
+        mind.state = 2
+    }
+
+    if distance > 1 && !canSee && heard {
+        mind.state = 1
+    }
+
+    if mind.state == 3 && distance > 1 && canSee {
+        mind.state = 2
+    }
+
+    if mind.state == 3 && distance > 1 && !canSee {
+        mind.state = 1
+    }
+
+    if mind.state == 1 && atTarget && !heard {
+        mind.state = 4
+    }
+
+    if mind.state == 4 && homeDistance <= 0 {
+        mind.state = 0
+    }
+}
