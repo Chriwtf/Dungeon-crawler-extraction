@@ -110,6 +110,8 @@ export async function startVerticalSlice() {
     const cargoNoiseReduction = getCargoNoiseReduction(progression);
     const carryCapacity = getCarryCapacity(progression);
     let upgradePanelOpen = false;
+    app.dataset.facilityMode = 'normal';
+    app.dataset.relicState = 'unsecured';
     const { renderer, backend, reason } = await createRenderer(canvas, {
         maxDevicePixelRatio: 1.75,
         directionalShadows: true,
@@ -374,6 +376,8 @@ export async function startVerticalSlice() {
         apexPosition = apexEvent.position;
         apexVisible = apexEvent.visible;
         apexMode = apexEvent.mode;
+        app.dataset.facilityMode = facilityMode === 2 ? 'blackout' : facilityMode === 1 ? 'emergency' : 'normal';
+        app.dataset.relicState = relicSecured ? 'secured' : 'unsecured';
         const enemyEvent = enemies.advance(dungeon, worldToPoint(dungeon, player.x, player.z), pulse, torchOn, (point) => doorSystem.isBlocking(point));
         syncEnemyNodes(enemyEvent.enemies);
         const incomingDamage = enemyEvent.attacks.reduce((total, attack) => total + attack.damage, 0);
@@ -535,6 +539,7 @@ export async function startVerticalSlice() {
             hasRelic = true;
             secureRelic(relicState);
             hud.objective.textContent = 'OBJECTIVE: RETURN TO EXTRACTION // SIGNAL ACTIVE';
+            app.dataset.relicState = 'secured';
         }
         if (hasRelic && distance(player, extractionPosition) <= EXTRACTION_RANGE) {
             completeExtraction();
@@ -671,7 +676,28 @@ export async function startVerticalSlice() {
             environment.lightWeights = lightBuffer.weights;
             environment.activeLightWorldIndices = lightBuffer.sourceIndex;
             environment.fogDensity = 0.014 + Math.min(0.007, simulation.pressure * 0.00007) + atmosphereState.level * 0.003 + (facilityMode === 2 ? 0.004 : 0);
-            renderer.beginFrame([0.004, 0.009, 0.007]);
+            const hunting = apexMode === 'hunting';
+            if (facilityMode === 2) {
+                environment.fogColor[0] = 0.003;
+                environment.fogColor[1] = 0.008;
+                environment.fogColor[2] = 0.007;
+            }
+            else if (hunting) {
+                environment.fogColor[0] = 0.035;
+                environment.fogColor[1] = 0.009;
+                environment.fogColor[2] = 0.005;
+            }
+            else if (facilityMode === 1) {
+                environment.fogColor[0] = 0.028;
+                environment.fogColor[1] = 0.011;
+                environment.fogColor[2] = 0.006;
+            }
+            else {
+                environment.fogColor[0] = 0.012;
+                environment.fogColor[1] = 0.025;
+                environment.fogColor[2] = 0.02;
+            }
+            renderer.beginFrame(hunting ? [0.012, 0.002, 0.001] : facilityMode === 2 ? [0.001, 0.003, 0.002] : facilityMode === 1 ? [0.009, 0.003, 0.001] : [0.004, 0.009, 0.007]);
             renderer.bindMeshPass(camera, environment);
             renderer.setSurfaceTexture(floorTexture, 1.4, 1.4);
             renderer.drawMesh(floor, identity.worldMatrix);
