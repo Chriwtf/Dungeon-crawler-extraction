@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import { fileURLToPath, URL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { driftScript } from 'driftscript/vite';
 
 export default defineConfig({
@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [driftScript()],
   resolve: {
     alias: {
-      driftscript: fileURLToPath(new URL('../driftengine/packages/driftscript/src/index.ts', import.meta.url)),
+      driftscript: fileURLToPath(new URL('./node_modules/driftscript/dist/index.js', import.meta.url)),
       '@driftengine/physics': fileURLToPath(new URL('../driftengine/packages/physics/src/index.ts', import.meta.url)),
     },
   },

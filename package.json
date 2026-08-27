@@ -20,7 +20,7 @@
     "@driftengine/entities": "file:../driftengine/packages/entities",
     "@driftengine/physics": "file:../driftengine/packages/physics",
     "@driftengine/script": "file:../driftengine/packages/script",
-    "driftscript": "file:../driftengine/packages/driftscript",
+    "driftscript": "1.4.0",
     "gl-matrix": "^3.4.3",
     "phaser": "^3.90.0"
   },
