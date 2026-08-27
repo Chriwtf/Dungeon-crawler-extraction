@@ -3,6 +3,17 @@ import type { RendererApi, SurfaceMaterial } from '@driftengine/core';
 type MaterialHandle = ReturnType<RendererApi['createSurfaceTexture']>;
 export type PbrMaterial = SurfaceMaterial<MaterialHandle>;
 
+/**
+ * Asset naming convention: `<material>_basecolor`, `<material>_normal`,
+ * `<material>_orm`, and optional `<material>_emissive`. The URLs remain game-owned.
+ */
+export interface PbrTextureSet {
+  readonly baseColorUrl: string;
+  readonly normalUrl?: string;
+  readonly ormUrl?: string;
+  readonly emissiveUrl?: string;
+}
+
 export interface PbrMaterialOptions {
   readonly roughness: number;
   readonly metallic: number;
@@ -18,15 +29,21 @@ export interface PbrMaterialOptions {
  */
 export async function createPbrMaterial(
   renderer: RendererApi,
-  albedoUrl: string,
+  textures: PbrTextureSet,
   options: PbrMaterialOptions,
 ): Promise<PbrMaterial> {
-  const bitmap = await loadBitmap(albedoUrl);
+  const bitmap = await loadBitmap(textures.baseColorUrl);
+  const [normal, orm, emissive] = await Promise.all([
+    textures.normalUrl === undefined ? createNormalMap(bitmap, options.normalStrength) : loadBitmap(textures.normalUrl),
+    textures.ormUrl === undefined ? createOrmMap(bitmap, options) : loadBitmap(textures.ormUrl),
+    textures.emissiveUrl === undefined ? null : loadBitmap(textures.emissiveUrl),
+  ]);
   const textureOptions = { anisotropy: 4, wrap: options.wrap ?? 'repeat' } as const;
   return {
     albedo: renderer.createSurfaceTexture(bitmap, { ...textureOptions, colorSpace: 'srgb' }),
-    normal: renderer.createSurfaceTexture(createNormalMap(bitmap, options.normalStrength), { ...textureOptions, colorSpace: 'linear' }),
-    orm: renderer.createSurfaceTexture(createOrmMap(bitmap, options), { ...textureOptions, colorSpace: 'linear' }),
+    normal: renderer.createSurfaceTexture(normal, { ...textureOptions, colorSpace: 'linear' }),
+    orm: renderer.createSurfaceTexture(orm, { ...textureOptions, colorSpace: 'linear' }),
+    emissive: emissive === null ? null : renderer.createSurfaceTexture(emissive, { ...textureOptions, colorSpace: 'srgb' }),
     normalStrength: options.normalStrength,
     uScale: options.uScale,
     vScale: options.vScale,

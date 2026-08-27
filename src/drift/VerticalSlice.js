@@ -142,15 +142,15 @@ export async function startVerticalSlice() {
     const floor = renderer.createMesh(dungeonMeshes.floor);
     const walls = renderer.createMesh(dungeonMeshes.walls);
     const [floorMaterial, wallMaterial, relicMaterial, extractionMaterial, documentLootMaterial, sampleLootMaterial, componentLootMaterial, artifactLootMaterial, equipmentMaterial] = await Promise.all([
-        createPbrMaterial(renderer, floorTextureUrl, { roughness: 0.76, metallic: 0.08, normalStrength: 0.34, uScale: 1.4, vScale: 1.4 }),
-        createPbrMaterial(renderer, wallTextureUrl, { roughness: 0.84, metallic: 0.06, normalStrength: 0.28, uScale: 1, vScale: 1.8 }),
-        createPbrMaterial(renderer, relicTextureUrl, { roughness: 0.42, metallic: 0.62, normalStrength: 0.48, wrap: 'clamp' }),
-        createPbrMaterial(renderer, extractionTextureUrl, { roughness: 0.38, metallic: 0.72, normalStrength: 0.4, wrap: 'clamp' }),
-        createPbrMaterial(renderer, documentLootTextureUrl, { roughness: 0.9, metallic: 0, normalStrength: 0.16, wrap: 'clamp' }),
-        createPbrMaterial(renderer, sampleLootTextureUrl, { roughness: 0.54, metallic: 0.18, normalStrength: 0.3, wrap: 'clamp' }),
-        createPbrMaterial(renderer, componentLootTextureUrl, { roughness: 0.37, metallic: 0.84, normalStrength: 0.44, wrap: 'clamp' }),
-        createPbrMaterial(renderer, artifactLootTextureUrl, { roughness: 0.3, metallic: 0.58, normalStrength: 0.5, wrap: 'clamp' }),
-        createPbrMaterial(renderer, equipmentMaterialTextureUrl, { roughness: 0.44, metallic: 0.7, normalStrength: 0.36 }),
+        createPbrMaterial(renderer, { baseColorUrl: floorTextureUrl }, { roughness: 0.76, metallic: 0.08, normalStrength: 0.34, uScale: 1.4, vScale: 1.4 }),
+        createPbrMaterial(renderer, { baseColorUrl: wallTextureUrl }, { roughness: 0.84, metallic: 0.06, normalStrength: 0.28, uScale: 1, vScale: 1.8 }),
+        createPbrMaterial(renderer, { baseColorUrl: relicTextureUrl }, { roughness: 0.42, metallic: 0.62, normalStrength: 0.48, wrap: 'clamp' }),
+        createPbrMaterial(renderer, { baseColorUrl: extractionTextureUrl }, { roughness: 0.38, metallic: 0.72, normalStrength: 0.4, wrap: 'clamp' }),
+        createPbrMaterial(renderer, { baseColorUrl: documentLootTextureUrl }, { roughness: 0.9, metallic: 0, normalStrength: 0.16, wrap: 'clamp' }),
+        createPbrMaterial(renderer, { baseColorUrl: sampleLootTextureUrl }, { roughness: 0.54, metallic: 0.18, normalStrength: 0.3, wrap: 'clamp' }),
+        createPbrMaterial(renderer, { baseColorUrl: componentLootTextureUrl }, { roughness: 0.37, metallic: 0.84, normalStrength: 0.44, wrap: 'clamp' }),
+        createPbrMaterial(renderer, { baseColorUrl: artifactLootTextureUrl }, { roughness: 0.3, metallic: 0.58, normalStrength: 0.5, wrap: 'clamp' }),
+        createPbrMaterial(renderer, { baseColorUrl: equipmentMaterialTextureUrl }, { roughness: 0.44, metallic: 0.7, normalStrength: 0.36 }),
     ]);
     const creatureMaterials = await loadCreatureMaterials(renderer);
     const relicPosition = pointToWorld(dungeon, dungeon.objective);

@@ -2,13 +2,19 @@
  * Game-side PBR bridge. Existing authored albedos get consistent normal and ORM inputs
  * until dedicated texture sets replace them in the following material-content steps.
  */
-export async function createPbrMaterial(renderer, albedoUrl, options) {
-    const bitmap = await loadBitmap(albedoUrl);
+export async function createPbrMaterial(renderer, textures, options) {
+    const bitmap = await loadBitmap(textures.baseColorUrl);
+    const [normal, orm, emissive] = await Promise.all([
+        textures.normalUrl === undefined ? createNormalMap(bitmap, options.normalStrength) : loadBitmap(textures.normalUrl),
+        textures.ormUrl === undefined ? createOrmMap(bitmap, options) : loadBitmap(textures.ormUrl),
+        textures.emissiveUrl === undefined ? null : loadBitmap(textures.emissiveUrl),
+    ]);
     const textureOptions = { anisotropy: 4, wrap: options.wrap ?? 'repeat' };
     return {
         albedo: renderer.createSurfaceTexture(bitmap, { ...textureOptions, colorSpace: 'srgb' }),
-        normal: renderer.createSurfaceTexture(createNormalMap(bitmap, options.normalStrength), { ...textureOptions, colorSpace: 'linear' }),
-        orm: renderer.createSurfaceTexture(createOrmMap(bitmap, options), { ...textureOptions, colorSpace: 'linear' }),
+        normal: renderer.createSurfaceTexture(normal, { ...textureOptions, colorSpace: 'linear' }),
+        orm: renderer.createSurfaceTexture(orm, { ...textureOptions, colorSpace: 'linear' }),
+        emissive: emissive === null ? null : renderer.createSurfaceTexture(emissive, { ...textureOptions, colorSpace: 'srgb' }),
         normalStrength: options.normalStrength,
         uScale: options.uScale,
         vScale: options.vScale,
