@@ -19,6 +19,7 @@ import { buildRoomPropMeshes } from './RoomProps3d';
 import { RunAudio } from './RunAudio';
 import { animateRig, createRiggedAnimator, createRiggedEnemyNode, loadRiggedEnemyAssets } from './RiggedEnemyAssets';
 import { loadCreatureMaterials } from './CreatureMaterials';
+import { createPbrMaterial } from './PbrMaterialPipeline';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
 import relicTextureUrl from '../assets/textures/relic-pedestal-albedo.png?url';
@@ -140,16 +141,16 @@ export async function startVerticalSlice() {
     const dungeonMeshes = buildDungeonMeshes(dungeon);
     const floor = renderer.createMesh(dungeonMeshes.floor);
     const walls = renderer.createMesh(dungeonMeshes.walls);
-    const [floorTexture, wallTexture, relicTexture, extractionTexture, documentLootTexture, sampleLootTexture, componentLootTexture, artifactLootTexture, equipmentMaterialTexture] = await Promise.all([
-        loadSurfaceTexture(renderer, floorTextureUrl),
-        loadSurfaceTexture(renderer, wallTextureUrl),
-        loadSurfaceTexture(renderer, relicTextureUrl, 'clamp'),
-        loadSurfaceTexture(renderer, extractionTextureUrl, 'clamp'),
-        loadSurfaceTexture(renderer, documentLootTextureUrl, 'clamp'),
-        loadSurfaceTexture(renderer, sampleLootTextureUrl, 'clamp'),
-        loadSurfaceTexture(renderer, componentLootTextureUrl, 'clamp'),
-        loadSurfaceTexture(renderer, artifactLootTextureUrl, 'clamp'),
-        loadSurfaceTexture(renderer, equipmentMaterialTextureUrl),
+    const [floorMaterial, wallMaterial, relicMaterial, extractionMaterial, documentLootMaterial, sampleLootMaterial, componentLootMaterial, artifactLootMaterial, equipmentMaterial] = await Promise.all([
+        createPbrMaterial(renderer, floorTextureUrl, { roughness: 0.76, metallic: 0.08, normalStrength: 0.34, uScale: 1.4, vScale: 1.4 }),
+        createPbrMaterial(renderer, wallTextureUrl, { roughness: 0.84, metallic: 0.06, normalStrength: 0.28, uScale: 1, vScale: 1.8 }),
+        createPbrMaterial(renderer, relicTextureUrl, { roughness: 0.42, metallic: 0.62, normalStrength: 0.48, wrap: 'clamp' }),
+        createPbrMaterial(renderer, extractionTextureUrl, { roughness: 0.38, metallic: 0.72, normalStrength: 0.4, wrap: 'clamp' }),
+        createPbrMaterial(renderer, documentLootTextureUrl, { roughness: 0.9, metallic: 0, normalStrength: 0.16, wrap: 'clamp' }),
+        createPbrMaterial(renderer, sampleLootTextureUrl, { roughness: 0.54, metallic: 0.18, normalStrength: 0.3, wrap: 'clamp' }),
+        createPbrMaterial(renderer, componentLootTextureUrl, { roughness: 0.37, metallic: 0.84, normalStrength: 0.44, wrap: 'clamp' }),
+        createPbrMaterial(renderer, artifactLootTextureUrl, { roughness: 0.3, metallic: 0.58, normalStrength: 0.5, wrap: 'clamp' }),
+        createPbrMaterial(renderer, equipmentMaterialTextureUrl, { roughness: 0.44, metallic: 0.7, normalStrength: 0.36 }),
     ]);
     const creatureMaterials = await loadCreatureMaterials(renderer);
     const relicPosition = pointToWorld(dungeon, dungeon.objective);
@@ -188,10 +189,10 @@ export async function startVerticalSlice() {
         artifact: renderer.createMesh(lootProps.artifact),
     };
     const lootTextures = {
-        document: documentLootTexture,
-        sample: sampleLootTexture,
-        component: componentLootTexture,
-        artifact: artifactLootTexture,
+        document: documentLootMaterial,
+        sample: sampleLootMaterial,
+        component: componentLootMaterial,
+        artifact: artifactLootMaterial,
     };
     const roomMeshes = Object.fromEntries(Object.entries(roomProps).map(([id, mesh]) => [id, renderer.createMesh(mesh)]));
     const identity = new SceneNode();
@@ -729,11 +730,11 @@ export async function startVerticalSlice() {
             }
             renderer.beginFrame(hunting ? [0.012, 0.002, 0.001] : facilityMode === 2 ? [0.001, 0.003, 0.002] : facilityMode === 1 ? [0.009, 0.003, 0.001] : [0.004, 0.009, 0.007]);
             renderer.bindMeshPass(camera, environment);
-            renderer.setSurfaceTexture(floorTexture, 1.4, 1.4);
+            renderer.setMaterial(floorMaterial);
             renderer.drawMesh(floor, identity.worldMatrix);
-            renderer.setSurfaceTexture(wallTexture, 1, 1.8);
+            renderer.setMaterial(wallMaterial);
             renderer.drawMesh(walls, identity.worldMatrix);
-            renderer.setSurfaceTexture(null);
+            renderer.setMaterial(null);
             for (let index = 0; index < dungeon.rooms.length; index += 1) {
                 const room = dungeon.rooms[index];
                 if (!exploration.isVisible(room.center))
@@ -749,19 +750,19 @@ export async function startVerticalSlice() {
                 renderer.drawMesh(emergencyLamp, node.worldMatrix);
             if (!hasRelic && exploration.isVisible(dungeon.objective)) {
                 renderer.drawMesh(relicPedestal, relicPedestalNode.worldMatrix);
-                renderer.setSurfaceTexture(relicTexture);
+                renderer.setMaterial(relicMaterial);
                 renderer.drawMesh(relicTexturedPedestal, relicPedestalNode.worldMatrix);
-                renderer.setSurfaceTexture(null);
+                renderer.setMaterial(null);
                 renderer.drawMesh(relicCore, relicNode.worldMatrix);
             }
             for (let index = 0; index < lootSpawns.length; index += 1) {
                 const loot = lootSpawns[index];
                 if (!collectedLoot.has(loot.id) && exploration.isVisible(loot.point)) {
-                    renderer.setSurfaceTexture(lootTextures[loot.kind]);
+                    renderer.setMaterial(lootTextures[loot.kind]);
                     renderer.drawMesh(lootMeshes[loot.kind], lootNodes[index].worldMatrix);
                 }
             }
-            renderer.setSurfaceTexture(equipmentMaterialTexture, 1, 1);
+            renderer.setMaterial(equipmentMaterial);
             for (let index = 0; index < containers.length; index += 1) {
                 const container = containers[index];
                 if (!openedContainers.has(container.id) && exploration.isVisible(container.point))
@@ -814,11 +815,11 @@ export async function startVerticalSlice() {
                 }
             }
             if (exploration.isVisible(dungeon.extraction)) {
-                renderer.setSurfaceTexture(null);
+                renderer.setMaterial(null);
                 renderer.drawMesh(extractionFrame, extractionNode.worldMatrix);
-                renderer.setSurfaceTexture(extractionTexture);
+                renderer.setMaterial(extractionMaterial);
                 renderer.drawMesh(texturedExtractionHatch, extractionNode.worldMatrix);
-                renderer.setSurfaceTexture(null);
+                renderer.setMaterial(null);
                 renderer.drawMesh(hasRelic ? extractionReady : extractionLocked, extractionNode.worldMatrix);
             }
             renderer.setSurfaceTexture(null);
@@ -963,11 +964,4 @@ function requireElement(selector) {
     if (element === null)
         throw new Error(`Missing required element: ${selector}`);
     return element;
-}
-async function loadSurfaceTexture(renderer, url, wrap = 'repeat') {
-    const response = await fetch(url);
-    if (!response.ok)
-        throw new Error(`Could not load dungeon texture: ${url}`);
-    const bitmap = await createImageBitmap(await response.blob());
-    return renderer.createSurfaceTexture(bitmap, { anisotropy: 4, colorSpace: 'srgb', wrap });
 }
