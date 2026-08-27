@@ -28,7 +28,7 @@ export function createRiggedAnimator(asset) {
         { from: 'attack', to: 'move', durationSec: 0.14, when: (p) => p.attack <= 0 && p.move > 0 },
         { from: 'attack', to: 'idle', durationSec: 0.14, when: (p) => p.attack <= 0 && p.move <= 0 },
     ], jointCount);
-    return { skeleton: new Skeleton(asset.joints, asset.inverseBind), pose: createPose(jointCount), machine, rootMotionJoint: asset.rootMotionJoint };
+    return { skeletons: asset.inverseBinds.map((inverseBind) => new Skeleton(asset.joints, inverseBind)), pose: createPose(jointCount), machine, rootMotionJoint: asset.rootMotionJoint };
 }
 export function animateRig(animator, state, dt) {
     animator.machine.set('move', state === 'move' ? 1 : 0);
@@ -39,7 +39,8 @@ export function animateRig(animator, state, dt) {
         // Gameplay owns world movement; discard the clip's locomotion before skinning.
         animator.pose.translation.fill(0, animator.rootMotionJoint * 3, animator.rootMotionJoint * 3 + 3);
     }
-    animator.skeleton.applyPose(animator.pose);
+    for (const skeleton of animator.skeletons)
+        skeleton.applyPose(animator.pose);
 }
 /**
  * Gobkit characters are authored Z-up; place them under the gameplay node so
@@ -74,7 +75,19 @@ async function loadRigged(renderer, url) {
             move: clipSegment(clip, 0, 1.25, 'move-fallback'),
             attack: clipSegment(clip, 1.25, 2.5, 'attack'),
         };
-        return { meshes: imported.meshes.map((mesh) => renderer.createMesh(mesh)), joints: skin.joints, inverseBind: skin.inverseBind, clips, rootMotionJoint };
+        const skinIndices = (json.nodes ?? []).flatMap((node) => {
+            if (node.mesh === undefined)
+                return [];
+            const primitiveCount = (json.meshes ?? [])[node.mesh]?.primitives.length ?? 0;
+            return Array.from({ length: primitiveCount }, () => node.skin ?? 0);
+        });
+        return {
+            parts: imported.meshes.map((mesh, index) => ({ mesh: renderer.createMesh(mesh), skinIndex: skinIndices[index] ?? 0 })),
+            joints: skin.joints,
+            inverseBinds: animated.skins.map((entry) => entry.inverseBind),
+            clips,
+            rootMotionJoint,
+        };
     }
     catch {
         return null;

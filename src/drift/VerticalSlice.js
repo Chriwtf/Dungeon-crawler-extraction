@@ -773,9 +773,10 @@ export async function startVerticalSlice() {
                     if (apexAnimator !== null)
                         animateRig(apexAnimator, apexAnimationState(apexMode), 1 / 60);
                     renderer.setMaterial(creatureMaterials.apex);
-                    renderer.setSkinPalette(apexAnimator?.skeleton.palette ?? null);
-                    for (const mesh of rigged.meshes)
-                        renderer.drawMesh(mesh, apexRigNode.worldMatrix);
+                    for (const part of rigged.parts) {
+                        renderer.setSkinPalette(apexAnimator?.skeletons[part.skinIndex]?.palette ?? null);
+                        renderer.drawMesh(part.mesh, apexRigNode.worldMatrix);
+                    }
                     renderer.setSkinPalette(null);
                 }
                 else {
@@ -795,11 +796,12 @@ export async function startVerticalSlice() {
                         if (animator !== undefined)
                             animateRig(animator, enemyAnimationState(enemy.state), 1 / 60);
                         renderer.setMaterial(creatureMaterials[enemy.kind]);
-                        renderer.setSkinPalette(animator?.skeleton.palette ?? null);
                         const rigNode = enemyRigNodes.get(enemy.id);
                         if (rigNode !== undefined) {
-                            for (const mesh of rigged.meshes)
-                                renderer.drawMesh(mesh, rigNode.worldMatrix);
+                            for (const part of rigged.parts) {
+                                renderer.setSkinPalette(animator?.skeletons[part.skinIndex]?.palette ?? null);
+                                renderer.drawMesh(part.mesh, rigNode.worldMatrix);
+                            }
                         }
                         renderer.setSkinPalette(null);
                         renderer.setMaterial(null);

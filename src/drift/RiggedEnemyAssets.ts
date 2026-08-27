@@ -6,8 +6,8 @@ import guardUrl from '../assets/models/characters/guard-rigged.glb?url';
 import crawlerUrl from '../assets/models/characters/crawler-rigged.glb?url';
 import apexUrl from '../assets/models/characters/apex-rigged.glb?url';
 
-export type RiggedAsset = { readonly meshes: ReturnType<RendererApi['createMesh']>[]; readonly joints: ReturnType<typeof readGltfSkins>['skins'][number]['joints']; readonly inverseBind: Float32Array; readonly clips: CreatureClips; readonly rootMotionJoint: number };
-export type RiggedAnimator = { readonly skeleton: Skeleton; readonly pose: ReturnType<typeof createPose>; readonly machine: AnimationStateMachine; readonly rootMotionJoint: number };
+export type RiggedAsset = { readonly parts: readonly { readonly mesh: ReturnType<RendererApi['createMesh']>; readonly skinIndex: number }[]; readonly joints: ReturnType<typeof readGltfSkins>['skins'][number]['joints']; readonly inverseBinds: readonly Float32Array[]; readonly clips: CreatureClips; readonly rootMotionJoint: number };
+export type RiggedAnimator = { readonly skeletons: readonly Skeleton[]; readonly pose: ReturnType<typeof createPose>; readonly machine: AnimationStateMachine; readonly rootMotionJoint: number };
 type CreatureClips = { readonly idle: AnimationClip; readonly move: AnimationClip; readonly attack: AnimationClip };
 export type CreatureAnimationState = 'idle' | 'move' | 'attack';
 
@@ -41,7 +41,7 @@ export function createRiggedAnimator(asset: RiggedAsset): RiggedAnimator {
     ],
     jointCount,
   );
-  return { skeleton: new Skeleton(asset.joints, asset.inverseBind), pose: createPose(jointCount), machine, rootMotionJoint: asset.rootMotionJoint };
+  return { skeletons: asset.inverseBinds.map((inverseBind) => new Skeleton(asset.joints, inverseBind)), pose: createPose(jointCount), machine, rootMotionJoint: asset.rootMotionJoint };
 }
 
 export function animateRig(animator: RiggedAnimator, state: CreatureAnimationState, dt: number): void {
@@ -53,7 +53,7 @@ export function animateRig(animator: RiggedAnimator, state: CreatureAnimationSta
     // Gameplay owns world movement; discard the clip's locomotion before skinning.
     animator.pose.translation.fill(0, animator.rootMotionJoint * 3, animator.rootMotionJoint * 3 + 3);
   }
-  animator.skeleton.applyPose(animator.pose);
+  for (const skeleton of animator.skeletons) skeleton.applyPose(animator.pose);
 }
 
 /**
@@ -87,7 +87,18 @@ async function loadRigged(renderer: RendererApi, url: string): Promise<RiggedAss
       move: clipSegment(clip, 0, 1.25, 'move-fallback'),
       attack: clipSegment(clip, 1.25, 2.5, 'attack'),
     };
-    return { meshes: imported.meshes.map((mesh) => renderer.createMesh(mesh)), joints: skin.joints, inverseBind: skin.inverseBind, clips, rootMotionJoint };
+    const skinIndices = (json.nodes ?? []).flatMap((node) => {
+      if (node.mesh === undefined) return [];
+      const primitiveCount = (json.meshes ?? [])[node.mesh]?.primitives.length ?? 0;
+      return Array.from({ length: primitiveCount }, () => node.skin ?? 0);
+    });
+    return {
+      parts: imported.meshes.map((mesh, index) => ({ mesh: renderer.createMesh(mesh), skinIndex: skinIndices[index] ?? 0 })),
+      joints: skin.joints,
+      inverseBinds: animated.skins.map((entry) => entry.inverseBind),
+      clips,
+      rootMotionJoint,
+    };
   } catch {
     return null;
   }
