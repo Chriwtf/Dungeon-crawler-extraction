@@ -136,7 +136,7 @@ export async function startVerticalSlice() {
         fogBaseY: 0,
     });
     const runManifest = createRunManifest(RUN_SEED);
-    const { dungeon, loot: lootSpawns, containers } = runManifest;
+    const { dungeon, loot: lootSpawns, containers, enemySpawns } = runManifest;
     const exploration = new ExplorationMemory(dungeon);
     const dungeonMeshes = buildDungeonMeshes(dungeon);
     const floor = renderer.createMesh(dungeonMeshes.floor);
@@ -255,7 +255,7 @@ export async function startVerticalSlice() {
     const secureRelic = relicModule.exports.secure;
     const advanceRelic = relicModule.exports.advance;
     const apex = new ApexDirector(dungeon);
-    const enemies = new EnemyDirector(dungeon, RUN_SEED);
+    const enemies = new EnemyDirector(dungeon, RUN_SEED, enemySpawns);
     const enemyNodes = new Map();
     const enemyRigNodes = new Map();
     const enemyAnimators = new Map();

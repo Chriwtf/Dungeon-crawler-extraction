@@ -3,7 +3,7 @@ import { loadModule } from 'driftscript';
 import type { DungeonData, Point } from '../world/DungeonGenerator';
 import { hasLineOfSight, findStepToward, manhattanDistance, samePoint } from '../world/DungeonPathfinding';
 import { isNoiseAudibleAt, type NoisePulse } from './NoiseSystem';
-import { planInitialEnemySpawns, type InitialEnemyKind } from './EnemySpawns';
+import { planInitialEnemySpawns, type InitialEnemyKind, type InitialEnemySpawn } from './EnemySpawns';
 import * as enemyBrainScript from '../../drift/scripts/EnemyBrain.drs';
 
 export type EnemyKind = InitialEnemyKind;
@@ -53,8 +53,8 @@ export class EnemyDirector {
   private readonly createMind = this.module.exports.createEnemyMind as () => EnemyMind;
   private readonly advanceMind = this.module.exports.advance as (mind: EnemyMind, distance: number, canSee: boolean, heard: boolean, atTarget: boolean, homeDistance: number) => void;
 
-  constructor(dungeon: DungeonData, seed: number) {
-    for (const spawn of planInitialEnemySpawns(dungeon, seed)) this.spawn(spawn.kind, spawn.point);
+  constructor(dungeon: DungeonData, seed: number, initialSpawns = planInitialEnemySpawns(dungeon, seed)) {
+    for (const spawn of initialSpawns as readonly InitialEnemySpawn[]) this.spawn(spawn.kind, spawn.point);
   }
 
   advance(dungeon: DungeonData, player: Point, pulse: NoisePulse, torchOn: boolean, isBlocked: (point: Point) => boolean): EnemyEvent {

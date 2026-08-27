@@ -16,11 +16,13 @@ export const VERTICAL_SLICE_DUNGEON_CONFIG: DungeonConfig = {
 /** All deterministic content chosen before a run begins. */
 export function createRunManifest(seed = RUN_SEED) {
   const dungeon = generateDungeon(VERTICAL_SLICE_DUNGEON_CONFIG, seed);
+  const loot = placeRunLoot(dungeon, seed, 5);
+  const containers = placeRunContainers(dungeon);
   return {
     dungeon,
-    loot: placeRunLoot(dungeon, seed, 5),
-    containers: placeRunContainers(dungeon),
-    enemySpawns: planInitialEnemySpawns(dungeon, seed),
+    loot,
+    containers,
+    enemySpawns: planInitialEnemySpawns(dungeon, seed, [...loot.map((entry) => entry.point), ...containers.map((entry) => entry.point)]),
   };
 }
 

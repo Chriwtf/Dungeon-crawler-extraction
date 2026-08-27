@@ -15,7 +15,7 @@ const DEFINITIONS = {
 };
 /** DriftEngine ECS world for local enemies; pathfinding remains deterministic game-side. */
 export class EnemyDirector {
-    constructor(dungeon, seed) {
+    constructor(dungeon, seed, initialSpawns = planInitialEnemySpawns(dungeon, seed)) {
         Object.defineProperty(this, "world", {
             enumerable: true,
             configurable: true,
@@ -46,7 +46,7 @@ export class EnemyDirector {
             writable: true,
             value: this.module.exports.advance
         });
-        for (const spawn of planInitialEnemySpawns(dungeon, seed))
+        for (const spawn of initialSpawns)
             this.spawn(spawn.kind, spawn.point);
     }
     advance(dungeon, player, pulse, torchOn, isBlocked) {
