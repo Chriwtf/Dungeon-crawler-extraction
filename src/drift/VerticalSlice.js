@@ -18,6 +18,7 @@ import { buildContainerMeshes } from './ContainerProps3d';
 import { buildRoomPropMeshes } from './RoomProps3d';
 import { RunAudio } from './RunAudio';
 import { animateRig, createRiggedAnimator, createRiggedEnemyNode, loadRiggedEnemyAssets } from './RiggedEnemyAssets';
+import { loadCreatureMaterials } from './CreatureMaterials';
 import floorTextureUrl from '../assets/textures/industrial-floor-albedo.png?url';
 import wallTextureUrl from '../assets/textures/industrial-wall-albedo.png?url';
 import relicTextureUrl from '../assets/textures/relic-pedestal-albedo.png?url';
@@ -26,9 +27,6 @@ import documentLootTextureUrl from '../assets/textures/loot-document-albedo.png?
 import sampleLootTextureUrl from '../assets/textures/loot-sample-albedo.png?url';
 import componentLootTextureUrl from '../assets/textures/loot-component-albedo.png?url';
 import artifactLootTextureUrl from '../assets/textures/loot-artifact-albedo.png?url';
-import guardMaterialTextureUrl from '../assets/textures/guard-material-albedo.png?url';
-import crawlerMaterialTextureUrl from '../assets/textures/crawler-material-albedo.png?url';
-import apexMaterialTextureUrl from '../assets/textures/apex-material-albedo.png?url';
 import equipmentMaterialTextureUrl from '../assets/textures/equipment-material-albedo.png?url';
 import * as atmosphereScript from './scripts/Atmosphere.drs';
 import * as facilityDirectorScript from './scripts/FacilityDirector.drs';
@@ -142,7 +140,7 @@ export async function startVerticalSlice() {
     const dungeonMeshes = buildDungeonMeshes(dungeon);
     const floor = renderer.createMesh(dungeonMeshes.floor);
     const walls = renderer.createMesh(dungeonMeshes.walls);
-    const [floorTexture, wallTexture, relicTexture, extractionTexture, documentLootTexture, sampleLootTexture, componentLootTexture, artifactLootTexture, guardMaterialTexture, crawlerMaterialTexture, apexMaterialTexture, equipmentMaterialTexture] = await Promise.all([
+    const [floorTexture, wallTexture, relicTexture, extractionTexture, documentLootTexture, sampleLootTexture, componentLootTexture, artifactLootTexture, equipmentMaterialTexture] = await Promise.all([
         loadSurfaceTexture(renderer, floorTextureUrl),
         loadSurfaceTexture(renderer, wallTextureUrl),
         loadSurfaceTexture(renderer, relicTextureUrl, 'clamp'),
@@ -151,11 +149,9 @@ export async function startVerticalSlice() {
         loadSurfaceTexture(renderer, sampleLootTextureUrl, 'clamp'),
         loadSurfaceTexture(renderer, componentLootTextureUrl, 'clamp'),
         loadSurfaceTexture(renderer, artifactLootTextureUrl, 'clamp'),
-        loadSurfaceTexture(renderer, guardMaterialTextureUrl),
-        loadSurfaceTexture(renderer, crawlerMaterialTextureUrl),
-        loadSurfaceTexture(renderer, apexMaterialTextureUrl),
         loadSurfaceTexture(renderer, equipmentMaterialTextureUrl),
     ]);
+    const creatureMaterials = await loadCreatureMaterials(renderer);
     const relicPosition = pointToWorld(dungeon, dungeon.objective);
     const extractionPosition = pointToWorld(dungeon, dungeon.extraction);
     const startPosition = pointToWorld(dungeon, dungeon.playerStart);
@@ -771,13 +767,12 @@ export async function startVerticalSlice() {
                 if (!openedContainers.has(container.id) && exploration.isVisible(container.point))
                     renderer.drawMesh(containerMeshes[container.kind], containerNodes[index].worldMatrix);
             }
-            renderer.setSurfaceTexture(apexMaterialTexture, 1, 1);
             if (apexVisible && exploration.isVisible(apexPosition)) {
                 const rigged = riggedEnemies.apex;
                 if (rigged !== null) {
                     if (apexAnimator !== null)
                         animateRig(apexAnimator, apexAnimationState(apexMode), 1 / 60);
-                    renderer.setSurfaceTexture(null);
+                    renderer.setMaterial(creatureMaterials.apex);
                     renderer.setSkinPalette(apexAnimator?.skeleton.palette ?? null);
                     for (const mesh of rigged.meshes)
                         renderer.drawMesh(mesh, apexRigNode.worldMatrix);
@@ -786,7 +781,7 @@ export async function startVerticalSlice() {
                 else {
                     renderer.drawMesh(apexMesh, apexNode.worldMatrix);
                 }
-                renderer.setSurfaceTexture(null);
+                renderer.setMaterial(null);
                 renderer.drawMesh(apexEyes, apexNode.worldMatrix);
             }
             for (const enemy of enemies.snapshots()) {
@@ -799,7 +794,7 @@ export async function startVerticalSlice() {
                         const animator = enemyAnimators.get(enemy.id);
                         if (animator !== undefined)
                             animateRig(animator, enemyAnimationState(enemy.state), 1 / 60);
-                        renderer.setSurfaceTexture(null);
+                        renderer.setMaterial(creatureMaterials[enemy.kind]);
                         renderer.setSkinPalette(animator?.skeleton.palette ?? null);
                         const rigNode = enemyRigNodes.get(enemy.id);
                         if (rigNode !== undefined) {
@@ -807,10 +802,12 @@ export async function startVerticalSlice() {
                                 renderer.drawMesh(mesh, rigNode.worldMatrix);
                         }
                         renderer.setSkinPalette(null);
+                        renderer.setMaterial(null);
                     }
                     else {
-                        renderer.setSurfaceTexture(enemy.kind === 'crawler' ? crawlerMaterialTexture : guardMaterialTexture, 1, 1);
+                        renderer.setMaterial(creatureMaterials[enemy.kind]);
                         renderer.drawMesh(enemyMeshes[enemy.kind], node.worldMatrix);
+                        renderer.setMaterial(null);
                     }
                 }
             }
